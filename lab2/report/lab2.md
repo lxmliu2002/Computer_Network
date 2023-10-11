@@ -260,6 +260,8 @@ HTTP响应报文由状态行（HTTP版本、状态码（数字和原因短语）
   * Sec-WebSocket-Accept
   * Sec-WebSocket-Protocol
 * 响应体
+  * 由于状态码表示请求正在处理，故此处无响应内容
+
 
 ##### 客户端回复ACK表示收到请求
 
