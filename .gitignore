@@ -3,3 +3,5 @@
 *.DS_STore
 **/.cache
 **/.bash_profile
+**/.history
+**/.vscode
