@@ -1,5 +1,5 @@
-#ifndef SERVER_MESSAGE_H
-#define SERVER_MESSAGE_H
+#ifndef MESSAGE_H
+#define MESSAGE_H
 
 #include <iostream>
 #include <WinSock2.h>
@@ -10,7 +10,6 @@ using namespace std;
 
 #pragma comment(lib, "Ws2_32.lib")
 
-
 #define File_Size 1024 * 8
 #define MSS 1010
 #define RSP 0b1
@@ -18,6 +17,11 @@ using namespace std;
 #define ACK 0b100
 #define SYN 0b1000
 #define FIN 0b10000
+
+#define Router_Port 12345
+#define Server_Port 65432
+#define Client_Port 54321
+#define Wait_Time 1000
 
 #define _CRT_SECURE_NO_WARNINGS //禁止使用不安全的函数报错
 #define _WINSOCK_DEPRECATED_NO_WARNINGS //禁止使用旧版本的函数报错
@@ -49,10 +53,10 @@ using namespace std;
  * -----------------------------------
  */
 #pragma pack(1)
-struct File_Message{
-    char *File_Name;
-    uint16_t File_Size;
-};
+// struct File_Message{
+//     char *File_Name;
+//     uint16_t File_Size;
+// };
 
 struct Message
 {
@@ -139,18 +143,18 @@ void Message::Set_Data(char *data)
 void Message::Print_Message()
 {
     cout << "Message "
-         <<"[SrcIP:"<<this->SrcIP<<"]"
-         <<"[DstIP:"<<this->DstIP<<"]"
-         <<"[SrcPort:"<<this->SrcPort<<"]"
-         <<"[DstPort:"<<this->DstPort<<"]"
-         <<"[Seq:"<<this->Seq<<"]"
-         <<"[Ack:"<<this->Ack<<"]"
-         <<"[Length:"<<this->Length<<"]"
-         <<"[RSP:"<<this->Is_RSP()<<"]"
-         <<"[CFH:"<<this->Is_CFH()<<"]"
-         <<"[ACK:"<<this->Is_ACK()<<"]"
-         <<"[SYN:"<<this->Is_SYN()<<"]"
-         <<"[FIN:"<<this->Is_FIN()<<"]"
+         <<"[SrcIP: "<<this->SrcIP<<" ] "
+         <<"[DstIP: "<<this->DstIP<<" ] "
+         <<"[SrcPort: "<<this->SrcPort<<" ] "
+         <<"[DstPort: "<<this->DstPort<<" ] "
+         <<"[Seq: "<<this->Seq<<" ] "
+         <<"[Ack: "<<this->Ack<<" ] "
+         <<"[Length: "<<this->Length<<" ] "
+         <<"[RSP: "<<this->Is_RSP()<<" ] "
+         <<"[RST: "<<this->Is_RST()<<" ] "
+         <<"[ACK: "<<this->Is_ACK()<<" ] "
+         <<"[SYN: "<<this->Is_SYN()<<" ] "
+         <<"[FIN: "<<this->Is_FIN()<<" ] "
          <<endl;
 }
 

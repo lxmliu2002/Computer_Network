@@ -1,226 +1,458 @@
-#include <iostream>
+#include "Message.h"
+#include <fstream>
 #include <cstdlib>
 #include <cstring>
 #include <chrono>
 #include <thread>
-#include <WinSock2.h>
-#include <ws2tcpip.h>
-//#include <ctime>  // 添加时间库
+// #include <ws2tcpip.h>
+#include <time.h>
 
-#pragma comment(lib,"ws2_32.lib")   //socket库
+SOCKET ServerSocket;
+SOCKADDR_IN ServerAddr;
+string ServerIP = "127.0.0.1";
+int ServerAddrLen = sizeof(ServerAddr);
 
-using namespace std;
+SOCKADDR_IN RouterAddr;
+string RouterIP = "127.0.0.1";
+int RouterAddrLen = sizeof(RouterAddr);
 
-#define PORT 8000  //端口号
-#define BufSize 1024  //缓冲区大小
-#define MaxClient 5 //最大连接数 = MaxClient - 1
-#define _CRT_SECURE_NO_WARNINGS //禁止使用不安全的函数报错
-#define _WINSOCK_DEPRECATED_NO_WARNINGS //禁止使用旧版本的函数报错
+uint16_t SrcIP;
+uint16_t DstIP;
 
-SOCKET clientSockets[MaxClient];//客户端socket数组
-SOCKET serverSocket;//服务器端socket
-SOCKADDR_IN clientAddrs[MaxClient];//客户端地址数组
-SOCKADDR_IN serverAddr;//定义服务器地址
+uint16_t file_length;
+char *file_name;
+FILE *Recv_File;
+int Seq = 0;
 
-int current_connect_count = 0; //当前连接的客户数
-int condition[MaxClient] = {};//每一个连接的情况
-
-int check()//查询空闲的连接口的索引
-{
-    for (int i = 0; i < MaxClient; i++)
-    {
-        if (condition[i] == 0)//连接空闲
-        {
-            return i;
-        }
-    }
-    exit(EXIT_FAILURE);
-}
-
-DWORD WINAPI ThreadFunction(LPVOID lpParameter)//线程函数
-{
-    int receByt = 0; //接收到的字节数
-    char RecvBuf[BufSize]; //接收缓冲区
-    char SendBuf[BufSize]; //发送缓冲区
-    //char exitBuf[5];
-    //SOCKET sock = *((SOCKET*)lpParameter);
-    
-    //循环接收信息
-    while (true)
-    {
-        int num = (int)lpParameter; //当前连接的索引
-        Sleep(100); //延时100ms
-        //receByt = recv(sock, RecvBuf, sizeof(RecvBuf), 0);
-        receByt = recv(clientSockets[num], RecvBuf, sizeof(RecvBuf), 0); //接收信息
-        if (receByt > 0) //接收成功
-        {
-            //for (int i = 0; i < 5; i++)
-            //{
-            //    exitBuf[i] = RecvBuf[i];
-            //}
-            //if (strcmp(exitBuf, "exit"))
-            //{
-            //    auto currentTime = chrono::system_clock::now();
-            //    time_t timestamp = chrono::system_clock::to_time_t(currentTime);
-            //    tm localTime;
-            //    localtime_s(&localTime, &timestamp);
-            //    char timeStr[50];
-            //    strftime(timeStr, sizeof(timeStr), "%Y-%m-%d--%H:%M:%S", &localTime); // 格式化时间
-            //    cout << "Client " << clientSockets[num] << " exit! Time: " << timeStr << endl;
-            //    closesocket(clientSockets[num]);
-            //    current_connect_count--;
-            //    condition[num] = 0;
-            //    send(clientSockets[num], "Your server has been closed!", sizeof(SendBuf), 0);
-            //    return 0;
-            //}
-            //创建时间戳，记录当前通讯时间
-            auto currentTime = chrono::system_clock::now();
-            time_t timestamp = chrono::system_clock::to_time_t(currentTime);
-            tm localTime;
-            localtime_s(&localTime, &timestamp);
-            char timeStr[50];
-            strftime(timeStr, sizeof(timeStr), "%Y-%m-%d--%H:%M:%S", &localTime); // 格式化时间
-            cout << "Client " << clientSockets[num] << " : " << RecvBuf << " --" << timeStr << endl;
-            sprintf_s(SendBuf, sizeof(SendBuf), "%d: %s --%s ", clientSockets[num], RecvBuf, timeStr); // 格式化发送信息
-            for (int i = 0; i < MaxClient; i++)//将消息同步到所有聊天窗口
-            {
-                if (condition[i] == 1)
-                {
-                    send(clientSockets[i], SendBuf, sizeof(SendBuf), 0);//发送信息
-                }
-            }
-        }
-        else //接收失败
-        {
-            if (WSAGetLastError() == 10054)//客户端主动关闭连接
-            {
-                //创建时间戳，记录当前通讯时间
-                auto currentTime = chrono::system_clock::now();
-                time_t timestamp = chrono::system_clock::to_time_t(currentTime);
-                tm localTime;
-                localtime_s(&localTime, &timestamp);
-                char timeStr[50];
-                strftime(timeStr, sizeof(timeStr), "%Y-%m-%d--%H:%M:%S", &localTime); // 格式化时间
-                cout << "Client " << clientSockets[num] << " exit! Time: " << timeStr << endl;
-                closesocket(clientSockets[num]);
-                current_connect_count--;
-                condition[num] = 0;
-                cout << "current_connect_count: " << current_connect_count << endl;
-                return 0;
-            }
-            else
-            {
-                cout << "Failed to receive, Error:" << WSAGetLastError() << endl;
-                break;
-            }
-        }
-    }
-}
-
+int Send_ACK(Message &msg, int seq);
+int Send_ACKSYN(Message &msg, int seq);
+bool Server_Initial();
+bool Connect();
+void Receive_Message();
+void Disconnect();
+void Exit();
 
 int main()
 {
-//    system("chcp 936");//防止乱码
-    //初始化DLL
-    WSAData wsaData;
-    WSAStartup(MAKEWORD(2, 2), &wsaData); //MAKEWORD（主版本号，副版本号）
-    if (LOBYTE(wsaData.wVersion) != 2 || HIBYTE(wsaData.wVersion) != 2)//错误处理 如果初始化成功，wVersion的低位为2，高位为2，存储为0x0202
+    WSADATA wsaData;
+
+    if(!Server_Initial())
     {
-        perror("Error in Initializing Socket DLL!\n");
+        cout <<"[Server] "<< "Error in Initializing Server!" << endl;
         exit(EXIT_FAILURE);
     }
-    cout << "Initializeing Socket DLL is successful!\n" << endl;
 
-    //创建服务器端套接字
-    serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);//IPv4地址族，流式套接字，TCP协议
-    if (serverSocket == INVALID_SOCKET)//错误处理
+    cout<<"[Server] "<<"Server is ready! Waiting for connection"<<endl;
+
+    if(!Connect())
     {
-        perror("Error in Creating Socket!\n");
+        cout <<"[Server] "<< "Error in Connecting!" << endl;
         exit(EXIT_FAILURE);
     }
-    cout << "Creating Socket is successful!\n" << endl;
-
-    //绑定服务器地址
-    serverAddr.sin_family = AF_INET;//地址类型
-    serverAddr.sin_port = htons(PORT);//端口号
-	if (inet_pton(AF_INET, "127.0.0.1", &(serverAddr.sin_addr)) != 1) {
-		cout << "Error in Inet_pton" << endl;
-		exit(EXIT_FAILURE);
-	}
-//	serverAddr.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
-    if (bind(serverSocket, (LPSOCKADDR)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR)//将服务器套接字与服务器地址和端口绑定
+    while(true)
     {
-        perror("Binding is failed!\n");
-        exit(EXIT_FAILURE);
-    }
-    else
-    {
-        cout << "Binding to port " << PORT << " is successful!\n" << endl;
-    }
-
-    //设置监听
-    if (listen(serverSocket, MaxClient) != 0)
-    {
-        perror("Listening is failed! \n");
-        exit(EXIT_FAILURE);
-    }
-    else
-    {
-        cout << "Listening is successful! \n" << endl;
-    }
-
-    cout << "The Server is ready! Waiting for Client request...\n\n" << endl;
-
-    cout << "current_connect_count: " << current_connect_count << endl;
-
-    //循环接收客户端请求
-    while (true)
-    {
-        if (current_connect_count < MaxClient)
+        int select = 0;
+        cout<<"[Server] "<<"Please select the function you want to use:"<<endl;
+        cout<<"[Server] "<<"1. Receive File"<<endl;
+        cout<<"[Server] "<<"2. Exit"<<endl;
+        cin>>select;
+        switch(select)
         {
-            int num = check();
-            int addrlen = sizeof(SOCKADDR);
-            clientSockets[num] = accept(serverSocket, (sockaddr*)&clientAddrs[num], &addrlen);//接收客户端请求
-            if (clientSockets[num] == SOCKET_ERROR)//错误处理
-            {
-                perror("The Client is failed! \n");
-                closesocket(serverSocket);
-                WSACleanup();
+            case 1:
+                Receive_Message();
+                break;
+            case 2:
+                Disconnect();
+                return 0;
+            default:
+                cout<<"[Server] "<<"Error in Selecting!"<<endl;
                 exit(EXIT_FAILURE);
-            }
-            condition[num] = 1;//连接位 置1表示占用
-            current_connect_count++; //当前连接数加1
-            //创建时间戳，记录当前通讯时间
-            auto currentTime = chrono::system_clock::now();
-            time_t timestamp = chrono::system_clock::to_time_t(currentTime);
-            tm localTime;
-            localtime_s(&localTime, &timestamp);
-            char timeStr[50];
-            strftime(timeStr, sizeof(timeStr), "%Y-%m-%d--%H:%M:%S", &localTime); // 格式化时间
+        }
+    }
+    return 0;
+}
 
-            cout << "The Client " << clientSockets[num] << " is connected. Time is " << timeStr << endl;
-            cout << "current_connect_count: " << current_connect_count << endl;
-            HANDLE Thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ThreadFunction, (LPVOID)num, 0, NULL);//创建线程
-            //HANDLE Thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ThreadFunction, (LPVOID) & (clientSockets[num]), 0, NULL);
-            if (Thread == NULL)//线程创建失败
+int Send_ACK(Message &msg, int seq)
+{
+    Seq++;
+    msg.SrcIP = SrcIP;
+    msg.DstIP = DstIP;
+    msg.SrcPort = Server_Port;
+    msg.DstPort = Router_Port;
+    msg.Seq = Seq;
+    msg.Ack = seq;
+    msg.Set_ACK();
+    msg.Set_Check();
+    return sendto(ServerSocket, (char *)&msg, sizeof(msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
+}
+int Send_ACKSYN(Message &msg, int seq)
+{
+    Seq++;
+    msg.SrcIP = SrcIP;
+    msg.DstIP = DstIP;
+    msg.SrcPort = Server_Port;
+    msg.DstPort = Router_Port;
+    msg.Seq = Seq;
+    msg.Ack = seq;
+    msg.Set_ACK();
+    msg.Set_SYN();
+    msg.Set_Check();
+    return sendto(ServerSocket, (char *)&msg, sizeof(msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
+}
+int Send_ACKFIN(Message &msg, int seq)
+{
+    Seq++;
+    msg.SrcIP = SrcIP;
+    msg.DstIP = DstIP;
+    msg.SrcPort = Server_Port;
+    msg.DstPort = Router_Port;
+    msg.Seq = Seq;
+    msg.Ack = seq;
+    msg.Set_ACK();
+    msg.Set_FIN();
+    msg.Set_Check();
+    return sendto(ServerSocket, (char *)&msg, sizeof(msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
+}
+bool Server_Initial()
+{
+    // 初始化DLL
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (LOBYTE(wsaData.wVersion) != 2 || HIBYTE(wsaData.wVersion) != 2)
+    {
+        perror("[Server] Error in Initializing Socket DLL!\n");
+        cout << endl;
+        exit(EXIT_FAILURE);
+    }
+    cout <<"[Server] "<< "Initializing Socket DLL is successful!\n" << endl;
+
+    // 创建服务器端套接字
+    ServerSocket = socket(AF_INET, SOCK_DGRAM, 0);
+    unsigned long on = 1;
+    ioctlsocket(ServerSocket, FIONBIO, &on);
+    if (ServerSocket == INVALID_SOCKET)
+    {
+        cout <<"[Server] "<< "Error in Creating Socket!\n" << endl;
+        exit(EXIT_FAILURE);
+        return false;
+    }
+    cout <<"[Server] "<< "Creating Socket is successful!\n" << endl;
+
+    // 绑定服务器地址
+    ServerAddr.sin_family = AF_INET;
+    ServerAddr.sin_port = htons(Server_Port);
+    ServerAddr.sin_addr.S_un.S_addr = inet_addr(ServerIP.c_str());
+    SrcIP = ServerAddr.sin_addr.S_un.S_addr;
+    // if (inet_pton(AF_INET, "127.0.0.1", &(ServerAddr.sin_addr)) != 1)
+    // {
+    //     cout << "Error in Inet_pton" << endl;
+    //     exit(EXIT_FAILURE);
+    // }
+    if (bind(ServerSocket, (SOCKADDR *)&ServerAddr, sizeof(SOCKADDR)) == SOCKET_ERROR)
+    {
+        cout <<"[Server] "<< "Error in Binding Socket!\n" << endl;
+        exit(EXIT_FAILURE);
+        return false;
+    }
+    cout <<"[Server] "<< "Binding Socket to port "<< Server_Port << "is successful!\n" << endl;
+
+    // 初始化路由器地址
+    RouterAddr.sin_family = AF_INET;
+    RouterAddr.sin_port = htons(Router_Port);
+    RouterAddr.sin_addr.S_un.S_addr = inet_addr(RouterIP.c_str());
+    DstIP = RouterAddr.sin_addr.S_un.S_addr;
+    // if (inet_pton(AF_INET, "127.0.0.1", &(RouterAddr.sin_addr)) != 1)
+    // {
+    //     cout << "Error in Inet_pton" << endl;
+    //     exit(EXIT_FAILURE);
+    // }
+
+    return true;
+}
+bool Connect()
+{
+    //三次握手
+    Message con_msg[3];
+    while(true)
+    {
+        // First-Way Handshake
+        if (recvfrom(ServerSocket, (char *)&con_msg[0], sizeof(con_msg[0]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+        {
+            cout <<"[Server] "<< "Receive Message from Router! —— First-Way Handshake" << endl;
+            con_msg[0].Print_Message();
+            if (!(con_msg[0].Is_SYN() && con_msg[0].CheckValid() && con_msg[0].Seq == Seq + 1))
             {
-                perror("The Thread is failed!\n");
+                cout <<"[Server] "<< "Error Message!" << endl;
                 exit(EXIT_FAILURE);
-            }
-            else
-            {
-                CloseHandle(Thread);
             }
         }
         else
         {
-            cout << "Fulling..." << endl;
+            cout<<"[Server] "<<"Error in Receiving Message! —— First-Way Handshake"<<endl;
+            exit(EXIT_FAILURE);
+        }
+        // Seq++;
+        // Second-Way Handshake
+        int re = Send_ACKSYN(con_msg[1], con_msg[0].Seq);
+        clock msg2_Send_Time = clock();
+        if (re > 0)
+        {
+            cout <<"[Server] "<< "Send Message to Router! —— Second-Way Handshake" << endl;
+            con_msg[1].Print_Message();
+        }
+        else
+        {
+            cout<<"[Server] "<<"Error in Sending Message! —— Second-Way Handshake"<<endl;
+            exit(EXIT_FAILURE);
+        }
+        // Third-Way Handshake
+        while(true)
+        {
+            if ((clock() - msg2_Send_Time) > Wait_Time)
+            {
+                cout <<"[Server] "<< "Time Out! —— Second-Way Handshake" << endl;
+                int re = Send_ACKSYN(con_msg[1], con_msg[0].Seq);
+                msg2_Send_Time = clock();
+                if (re > 0)
+                {
+                    cout <<"[Server] "<< "Send Message to Router! —— Second-Way Handshake" << endl;
+                    con_msg[1].Print_Message();
+                }
+                else
+                {
+                    cout<<"[Server] "<<"Error in Sending Message! —— Second-Way Handshake"<<endl;
+                    exit(EXIT_FAILURE);
+                }
+            }
+            if (recvfrom(ServerSocket, (char *)&con_msg[2], sizeof(con_msg[2]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+            {
+                cout <<"[Server] "<< "Receive Message from Router! —— Third-Way Handshake" << endl;
+                con_msg[2].Print_Message();
+                if (!(con_msg[2].Is_ACK() && con_msg[2].CheckValid() && con_msg[2].Seq == Seq + 1 && con_msg[2].Ack == con_msg[1].Seq))
+                {
+                    cout <<"[Server] "<< "Error Message!" << endl;
+                    exit(EXIT_FAILURE);
+                }
+                cout <<"[Server] "<< "Third-Way Handshake is successful!" << endl;
+                // Seq++;
+                return true;
+            }
+            else
+            {
+                cout<<"[Server] "<<"Error in Receiving Message! —— Third-Way Handshake"<<endl;
+                exit(EXIT_FAILURE);
+            }
         }
     }
-
-    closesocket(serverSocket);
-    WSACleanup();
-
-    return 0;
+    return false;
 }
+void Receive_Message()
+{
+    Message rec_msg;
+    while(true)
+    {
+        if (recvfrom(ServerSocket, (char *)&rec_msg, sizeof(rec_msg), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+        {
+            cout <<"[Server] "<< "Receive Message from Router!" << endl;
+            rec_msg.Print_Message();
+            if (rec_msg.Is_CFH() && rec_msg.CheckValid() && rec_msg.Seq == Seq + 1)
+            {
+                // Seq++;
+                file_length = rec_msg.Length;
+                memcpy(file_name, rec_msg->Data, sizeof(rec_msg->Data));
+                cout <<"[Server] "<< "Receive File Name: " << file_name << " File Size: " << file_length << endl;
 
+                Message reply_msg;
+                if(Send_ACK(reply_msg,rec_msg.Seq)>0)
+                {
+                    cout<<"[Server] "<< "Receive Seq = "<<rec_msg.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
+                }
+            }
+            else if (rec_msg.CheckValid() && rec_msg.Seq != Seq + 1)
+            {
+                Message reply_msg;
+                if(Send_Ack(reply_msg,rec_msg.Seq)>0)
+                {
+                    cout<<"[Server] [!Repeatedly!]"<< "Receive Seq = "<<rec_msg.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
+                }
+            }
+            else
+            {
+                cout <<"[Server] "<< "Error Message!" << endl;
+                exit(EXIT_FAILURE);
+            }
+        }
+        else
+        {
+            cout<<"[Server] "<<"Error in Receiving Message!"<<endl;
+            exit(EXIT_FAILURE);
+        }
+    }
+    int complete_num = file_length / MSS;
+    int last_length = file_length % MSS;
+
+    char *file_buffer = new char[file_length];
+    cout <<"[Server] "<< "Start Receiving File!" << endl;
+    for(int i = 0 ; i <= complete_num ; i++)
+    {
+        Message data_msg;
+        while(true)
+        {
+            if (recvfrom(ServerSocket, (char *)&data_msg, sizeof(rec_msg), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+            {
+                cout <<"[Server] "<< "Receive Message from Router!" << endl;
+                data_msg.Print_Message();
+                if (data_msg.CheckValid() && data_msg.Seq == Seq + 1)
+                {
+                    // Seq++;
+                    Message reply_msg;
+                    if(Send_ACK(reply_msg,data_msg.Seq)>0)
+                    {
+                        cout<<"[Server] "<< "Receive Seq = "<<data_msg.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
+                        break;
+                    }
+                }
+                else if (data_msg.CheckValid() && data_msg.Seq != Seq + 1)
+                {
+                    Message reply_msg;
+                    if(Send_ACK(reply_msg,data_msg.Seq)>0)
+                    {
+                        cout<<"[Server] [!Repeatedly!]"<< "Receive Seq = "<<data_msg.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
+                    }
+                }
+                else
+                {
+                    cout <<"[Server] "<< "Error Message!" << endl;
+                    exit(EXIT_FAILURE);
+                }
+            }
+        }
+        cout<<"[Server] "<< "Receive Successfully!"<<endl;
+        if (i != complete_num)
+        {
+            for(int j = 0 ; j < MSS ; j++)
+            {
+                file_buffer[i * MSS + j] = data_msg.Data[j];
+            }
+        }
+        else
+        {
+            for(int j = 0 ; j < last_length ; j++)
+            {
+                file_buffer[complete_num * MSS + j] = data_msg.Data[j];
+            }
+        }
+        cout<<"[Server] "<< "Finish Receiving!"<<endl;
+        Recv_File = fopen(file_name, "Recv_File");
+        if(file_buffer != NULL)
+        {
+            fwrite(file_buffer, sizeof(char), file_length, Recv_File);
+            fclose(Recv_File);
+            cout<<"[Server] "<< "Finish Writing File!"<<endl;
+        }
+        else
+        {
+            cout<<"[Server] "<< "Error in Writing File!"<<endl;
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+void Disconnect()//Router端主动断开连接
+{
+    Message discon_msg[4];
+    while(true)
+    {
+        // First-Way Wavehand
+        if (recvfrom(ServerSocket, (char *)&con_msg[0], sizeof(con_msg[0]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+        {
+            cout <<"[Server] "<< "Receive Message from Router! —— First-Way Wavehand" << endl;
+            discon_msg[0].Print_Message();
+            if (!(discon_msg[0].Is_FIN() && discon_msg[0].CheckValid() && discon_msg[0].Seq == Seq + 1))
+            {
+                cout <<"[Server] "<< "Error Message!" << endl;
+                exit(EXIT_FAILURE);
+            }
+        }
+        else
+        {
+            cout<<"[Server] "<<"Error in Receiving Message! —— First-Way Wavehand"<<endl;
+            exit(EXIT_FAILURE);
+        }
+        // Seq++;
+        // Second-Way Wavehand
+        int re = Send_ACK(discon_msg[1], discon_msg[0].Seq);
+        // clock dismsg2_Send_Time = clock();
+        if (re > 0)
+        {
+            cout <<"[Server] "<< "Send Message to Router! —— Second-Way Wavehand" << endl;
+            discon_msg[1].Print_Message();
+        }
+        else
+        {
+            cout<<"[Server] "<<"Error in Sending Message! —— Second-Way Wavehand"<<endl;
+            exit(EXIT_FAILURE);
+        }
+        // Seq++;
+        break;
+    }
+    // Third-Way Wavehand
+    int re = Send_ACKFIN(discon_msg[2], discon_msg[1].Seq);
+    clock dismsg3_Send_Time = clock();
+    if (re > 0)
+    {
+        cout <<"[Server] "<< "Send Message to Router! —— Third-Way Wavehand" << endl;
+        discon_msg[2].Print_Message();
+    }
+    else
+    {
+        cout<<"[Server] "<<"Error in Sending Message! —— Third-Way Wavehand"<<endl;
+        exit(EXIT_FAILURE);
+    }
+    // Fourth-Way Wavehand
+    while(true)
+    {
+        if ((clock() - dismsg3_Send_Time) > Wait_Time)
+        {
+            cout <<"[Server] "<< "Time Out! —— Third-Way Wavehand" << endl;
+            int re = Send_ACKFIN(discon_msg[2], discon_msg[1].Seq);
+            dismsg3_Send_Time = clock();
+            if (re > 0)
+            {
+                cout <<"[Server] "<< "Send Message to Router! —— Third-Way Wavehand" << endl;
+                discon_msg[2].Print_Message();
+            }
+            else
+            {
+                cout<<"[Server] "<<"Error in Sending Message! —— Third-Way Wavehand"<<endl;
+                exit(EXIT_FAILURE);
+            }
+        }
+        if (recvfrom(ServerSocket, (char *)&discon_msg[3], sizeof(discon_msg[3]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+        {
+            cout <<"[Server] "<< "Receive Message from Router! —— Fourth-Way Wavehand" << endl;
+            discon_msg[3].Print_Message();
+            if (!(discon_msg[3].Is_ACK() && discon_msg[3].CheckValid() && discon_msg[3].Seq == Seq + 1 && discon_msg[3].Ack == discon_msg[2].Seq))
+            {
+                cout <<"[Server] "<< "Error Message!" << endl;
+                exit(EXIT_FAILURE);
+            }
+            cout <<"[Server] "<< "Fourth-Way Wavehand is successful!" << endl;
+            // Seq++;
+            break;
+        }
+        else
+        {
+            cout<<"[Server] "<<"Error in Receiving Message! —— Fourth-Way Wavehand"<<endl;
+            exit(EXIT_FAILURE);
+        }
+    }
+    Exit();
+    return;
+}
+void Exit()
+{
+    // Sleep(Exit_Time);
+    closesocket(ServerSocket);
+    WSACleanup();
+    cout<<"[Server] "<< "Server is closed!"<<endl;
+    system("pause");
+}
