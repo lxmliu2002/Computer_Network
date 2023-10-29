@@ -239,6 +239,7 @@ void Send_Message(string file_path)
             }
         }
     }
+    float complete_time = clock();
     // file.read(file_buffer, file_length);
     int complete_num = file_length / MSS;
     int last_length = file_length % MSS;
@@ -364,8 +365,11 @@ void Send_Message(string file_path)
             }
         }
     }
+    float send_time = clock() - complete_time;
     file.close();
     cout<<"[Client] "<< "Finish Sending File!" << endl;
+    cout<<"[Client] "<< "Send Time: "<<send_time<<" ms"<<endl;
+    cout<<"[Client] "<< "Send Speed: "<<file_length/send_time<<" Byte/ms"<<endl<<endl;
 }
 void Disconnect()// * Client端主动断开连接
 {

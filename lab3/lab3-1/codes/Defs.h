@@ -160,6 +160,5 @@ void Message::Print_Message()
 
 //TODO
 /*
-* 传输时间、平均吞吐率
 * 吞吐率、延时，图形化分析
 */
