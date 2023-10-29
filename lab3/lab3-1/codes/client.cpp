@@ -1,54 +1,35 @@
-#include "Mseeage.h"
-#include <fstream>
-#include <cstdlib>
-#include <cstring>
-#include <chrono>
-#include <thread>
-// #include <ws2tcpip.h>
-#include <time.h>
+#include "Defs.h"
 
-#define Router_Port 12345
+#define Router_Port 65432
+// #define Server_Port 65432
 #define Client_Port 54321
-#define Wait_Time 3000
 
-SOCKET ClientSocket;
-SOCKADDR_IN ClientAddr;
-string ClientIP = "127.0.0.1";
-int ClientAddrLen = sizeof(ClientAddr);
+WSADATA wsaData;
 
-SOCKADDR_IN RouterAddr;
-string RouterIP = "127.0.0.1";
-int RouterAddrLen = sizeof(RouterAddr);
-
-uint16_t SrcIP;
-uint16_t DstIP;
-
-uint16_t file_length;
 char *file_name;
-FILE *Recv_File;
+
 int Seq = 0;
 
-
-int Send_ACK(Message &msg, int seq);
-int Send_SYN(Message &msg);
-int Send_ACKSYN(Message &msg, int seq);
-int Send_FIN(Message &msg, int seq);
+int Send(Message &msg);
 bool Client_Initial();
 bool Connect();
-void Receive_Message();
+void Send_Message(string file_path);
 void Disconnect();
 void Wait_Exit();
 
-int main()
+int main(int argc, char *argv[])
 {
-    WSADATA wsaData;
+    if (argc == 3)
+    {
+        ClientIP = argv[1];
+        RouterIP = argv[2];
+    }
 
     if(!Client_Initial())
     {
         cout <<"[Client] "<< "Error in Initializing Client!" << endl;
         exit(EXIT_FAILURE);
     }
-
     cout<<"[Client] "<<"Client is ready! Trying to connection"<<endl;
 
     if(!Connect())
@@ -63,10 +44,13 @@ int main()
         cout<<"[Client] "<<"1. Send File"<<endl;
         cout<<"[Client] "<<"2. Exit"<<endl;
         cin>>select;
+        string file_path;
         switch(select)
         {
             case 1:
-                Send_Message();
+                cout<<"[Client] "<<"Please input the file path:"<<endl;
+                cin>>file_path;
+                Send_Message(file_path);
                 break;
             case 2:
                 Disconnect();
@@ -76,408 +60,386 @@ int main()
                 exit(EXIT_FAILURE);
         }
     }
+    system("pause");
     return 0;
 }
 
-int Send_ACK(Message &msg, int seq)
+int Send(Message &msg)
 {
-    Seq++;
-    msg.SrcIP = SrcIP;
-    msg.DstIP = DstIP;
     msg.SrcPort = Client_Port;
     msg.DstPort = Router_Port;
-    msg.Seq = Seq;
-    msg.Ack = seq;
-    msg.Set_ACK();
-    msg.Set_Check();
-    return sendto(ClientSocket, (char *)&msg, sizeof(msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
-}
-int Send_SYN(Message &msg)
-{
-    Seq++;
-    msg.SrcIP = SrcIP;
-    msg.DstIP = DstIP;
-    msg.SrcPort = Client_Port;
-    msg.DstPort = Router_Port;
-    msg.Seq = Seq;
-    msg.Set_SYN();
-    msg.Set_Check();
-    return sendto(ClientSocket, (char *)&msg, sizeof(msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
-}
-int Send_FIN(Message &msg, int seq)
-{
-    Seq++;
-    msg.SrcIP = SrcIP;
-    msg.DstIP = DstIP;
-    msg.SrcPort = Client_Port;
-    msg.DstPort = Router_Port;
-    msg.Seq = Seq;
-    msg.Ack = seq;
-    msg.Set_FIN();
-    msg.Set_Check();
-    return sendto(ClientSocket, (char *)&msg, sizeof(msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
-}
-int Send_ACKSYN(Message &msg, int seq)
-{
-    Seq++;
-    msg.SrcIP = SrcIP;
-    msg.DstIP = DstIP;
-    msg.SrcPort = Client_Port;
-    msg.DstPort = Router_Port;
-    msg.Seq = Seq;
-    msg.Ack = seq;
-    msg.Set_ACK();
-    msg.Set_SYN();
-    msg.Set_Check();
-    return sendto(ClientSocket, (char *)&msg, sizeof(msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
-}
-int Send_ACKFIN(Message &msg, int seq)
-{
-    Seq++;
-    msg.SrcIP = SrcIP;
-    msg.DstIP = DstIP;
-    msg.SrcPort = Client_Port;
-    msg.DstPort = Router_Port;
-    msg.Seq = Seq;
-    msg.Ack = seq;
-    msg.Set_ACK();
-    msg.Set_FIN();
     msg.Set_Check();
     return sendto(ClientSocket, (char *)&msg, sizeof(msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
 }
 bool Client_Initial()
 {
-    // 初始化DLL
     WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (LOBYTE(wsaData.wVersion) != 2 || HIBYTE(wsaData.wVersion) != 2)
     {
         perror("[Client] Error in Initializing Socket DLL!\n");
-        cout << endl;
         exit(EXIT_FAILURE);
     }
-    cout <<"[Client] "<< "Initializing Socket DLL is successful!\n" << endl;
+    cout <<"[Client] "<< "Initializing Socket DLL is successful!\n";
 
-    // 创建客户端套接字
     ClientSocket = socket(AF_INET, SOCK_DGRAM, 0);
     unsigned long on = 1;
     ioctlsocket(ClientSocket, FIONBIO, &on);
     if (ClientSocket == INVALID_SOCKET)
     {
-        cout <<"[Client] "<< "Error in Creating Socket!\n" << endl;
+        cout <<"[Client] "<< "Error in Creating Socket!\n";
         exit(EXIT_FAILURE);
         return false;
     }
-    cout <<"[Client] "<< "Creating Socket is successful!\n" << endl;
+    cout <<"[Client] "<< "Creating Socket is successful!\n";
 
-    // 绑定客户端地址
     ClientAddr.sin_family = AF_INET;
     ClientAddr.sin_port = htons(Client_Port);
     ClientAddr.sin_addr.S_un.S_addr = inet_addr(ClientIP.c_str());
-    SrcIP = ClientAddr.sin_addr.S_un.S_addr;
-    // if (inet_pton(AF_INET, "127.0.0.1", &(ClientAddr.sin_addr)) != 1)
-    // {
-    //     cout << "Error in Inet_pton" << endl;
-    //     exit(EXIT_FAILURE);
-    // }
+
     if (bind(ClientSocket, (SOCKADDR *)&ClientAddr, sizeof(SOCKADDR)) == SOCKET_ERROR)
     {
-        cout <<"[Client] "<< "Error in Binding Socket!\n" << endl;
+        cout <<"[Client] "<< "Error in Binding Socket!\n";
         exit(EXIT_FAILURE);
         return false;
     }
-    cout <<"[Client] "<< "Binding Socket to port "<< Client_Port<<"is successful!\n" << endl;
+    cout <<"[Client] "<< "Binding Socket to port "<< Client_Port<<" is successful!\n\n";
 
-    // 初始化路由器地址
     RouterAddr.sin_family = AF_INET;
     RouterAddr.sin_port = htons(Router_Port);
     RouterAddr.sin_addr.S_un.S_addr = inet_addr(RouterIP.c_str());
-    DstIP = RouterAddr.sin_addr.S_un.S_addr;
-    // if (inet_pton(AF_INET, "127.0.0.1", &(RouterAddr.sin_addr)) != 1)
-    // {
-    //     cout << "Error in Inet_pton" << endl;
-    //     exit(EXIT_FAILURE);
-    // }
-
     return true;
 }
 bool Connect()
 {
-    //三次握手
     Message con_msg[3];
-    while(true)
+    // * First-Way Handshake
+    con_msg[0].Seq = ++Seq;
+    con_msg[0].Set_SYN();
+
+    int re = Send(con_msg[0]);
+    float msg1_Send_Time = clock();
+    if (re > 0)
     {
-        // First-Way Handshake
-        // Seq++;
-        int re = Send_SYN(con_msg[0]);
-        clock msg1_Send_Time = clock();
-        if (re > 0)
-        {
-            cout <<"[Client] "<< "Send Message to Router! —— First-Way Handshake" << endl;
-            con_msg[0].Print_Message();
-        }
-        else
-        {
-            cout<<"[Client] "<<"Error in Sending Message! —— First-Way Handshake"<<endl;
-            exit(EXIT_FAILURE);
-        }
-        // Second-Way Handshake
+        // cout <<"[Client] "<< "Send Message to Router! -- First-Way Handshake" << endl;
+        // con_msg[0].Print_Message();
+        // * Second-Way Handshake
         while(true)
         {
+            if (recvfrom(ClientSocket, (char *)&con_msg[1], sizeof(con_msg[1]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+            {
+                // cout <<"[Client] "<< "Receive Message from Router! -- Second-Way Handshake" << endl;
+                // con_msg[1].Print_Message();
+                if (!(con_msg[1].Is_ACK() && con_msg[1].Is_SYN() &&con_msg[1].CheckValid() && con_msg[1].Ack == con_msg[0].Seq))
+                {
+                    cout <<"[Client] "<< "Error Message!" << endl;
+                    exit(EXIT_FAILURE);
+                }
+                Seq = con_msg[1].Seq;
+                break;
+            }
             if ((clock() - msg1_Send_Time) > Wait_Time)
             {
-                cout <<"[Client] "<< "Time Out! —— First-Way Handshake" << endl;
-                int re = Send_SYN(con_msg[0]);
+                int re = Send(con_msg[0]);
                 msg1_Send_Time = clock();
                 if (re > 0)
                 {
-                    cout <<"[Client] "<< "Send Message to Router! —— First-Way Handshake" << endl;
-                    con_msg[0].Print_Message();
+                    cout <<"[Client] "<< "Time Out! -- Send Message to Router! -- First-Way Handshake" << endl;
+                    // con_msg[0].Print_Message();
                 }
-                else
-                {
-                    cout<<"[Client] "<<"Error in Sending Message! —— First-Way Handshake"<<endl;
-                    exit(EXIT_FAILURE);
-                }
-            }
-            if (recvfrom(ClientSocket, (char *)&con_msg[1], sizeof(con_msg[1]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
-            {
-                cout <<"[Client] "<< "Receive Message from Router! —— Second-Way Handshake" << endl;
-                con_msg[1].Print_Message();
-                if (!(con_msg[1].Is_ACK() && con_msg[1].Is_SYN() &&con_msg[1].CheckValid() && con_msg[1].Seq == Seq + 1 && con_msg[1].Ack == con_msg[0].Seq))
-                {
-                    cout <<"[Client] "<< "Error Message!" << endl;
-                    exit(EXIT_FAILURE);
-                }
-                cout <<"[Client] "<< "Third-Way Handshake is successful!" << endl;
-                // Seq++;
-                return true;
-            }
-            else
-            {
-                cout<<"[Client] "<<"Error in Receiving Message! —— Second-Way Handshake"<<endl;
-                exit(EXIT_FAILURE);
             }
         }
     }
-    // Third-Way Handshake
-    int re = Send_ACK(con_msg[2], con_msg[1].Seq);
+    // * Third-Way Handshake
+    con_msg[2].Ack = con_msg[1].Seq;
+    con_msg[2].Seq = ++Seq;
+    con_msg[2].Set_ACK();
+    re = Send(con_msg[2]);
     if (re > 0)
     {
-        cout <<"[Client] "<< "Send Message to Router! —— Third-Way Handshake" << endl;
-        con_msg[2].Print_Message();
+        // cout <<"[Client] "<< "Send Message to Router! -- Third-Way Handshake" << endl;
+        // con_msg[2].Print_Message();
     }
-    else
-    {
-        cout<<"[Client] "<<"Error in Sending Message! —— Third-Way Handshake"<<endl;
-        exit(EXIT_FAILURE);
-    }
-    cout<<"[Client] "<< "Third-Way Handshake is successful!" << endl;
+    cout<<"[Client] "<< "Third-Way Handshake is successful!" << endl <<endl;
     return true;
 }
-// TODO 
-void Send_Message()
+void Send_Message(string file_path)
 {
-    Message rec_msg;
-    while(true)
-    {
-        if (recvfrom(ClientSocket, (char *)&rec_msg, sizeof(rec_msg), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
-        {
-            cout <<"[Client] "<< "Receive Message from Router!" << endl;
-            rec_msg.Print_Message();
-            if (rec_msg.Is_CFH() && rec_msg.CheckValid() && rec_msg.Seq == Seq + 1)
-            {
-                Seq++;
-                file_length = rec_msg.Length;
-                memcpy(file_name, rec_msg->Data, sizeof(rec_msg->Data));
-                cout <<"[Client] "<< "Receive File Name: " << file_name << " File Size: " << file_length << endl;
+    size_t found = file_path.find_last_of("/\\");
+    string file_name = file_path.substr(found + 1);
 
-                Message reply_msg;
-                if(Send_ACK(reply_msg,rec_msg.Seq)>0)
-                {
-                    cout<<"[Client] "<< "Receive Seq = "<<rec_msg.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
-                }
-            }
-            else if (rec_msg.CheckValid() && rec_msg.Seq != Seq + 1)
-            {
-                Message reply_msg;
-                if(Send_Ack(reply_msg,rec_msg.Seq)>0)
-                {
-                    cout<<"[Client] [!Repeatedly!]"<< "Receive Seq = "<<rec_msg.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
-                }
-            }
-            else
-            {
-                cout <<"[Client] "<< "Error Message!" << endl;
-                exit(EXIT_FAILURE);
-            }
-        }
-        else
-        {
-            cout<<"[Client] "<<"Error in Receiving Message!"<<endl;
-            exit(EXIT_FAILURE);
-        }
-    }
-    int complete_num = file_length / MSS;
-    int last_length = file_length % MSS;
-
-    char *file_buffer = new char[file_length];
-    cout <<"[Client] "<< "Start Receiving File!" << endl;
-    for(int i = 0 ; i <= complete_num ; i++)
+    ifstream file(file_path, ios::binary);
+    if (!file.is_open())
     {
-        Message data_msg;
-        while(true)
-        {
-            if (recvfrom(ClientSocket, (char *)&data_msg, sizeof(rec_msg), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
-            {
-                cout <<"[Client] "<< "Receive Message from Router!" << endl;
-                data_msg.Print_Message();
-                if (data_msg.CheckValid() && data_msg.Seq == Seq + 1)
-                {
-                    Seq++;
-                    Message reply_msg;
-                    if(Send_ACK(reply_msg,data_msg.Seq)>0)
-                    {
-                        cout<<"[Client] "<< "Receive Seq = "<<data_msg.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
-                        break;
-                    }
-                }
-                else if (data_msg.CheckValid() && data_msg.Seq != Seq + 1)
-                {
-                    Message reply_msg;
-                    if(Send_ACK(reply_msg,data_msg.Seq)>0)
-                    {
-                        cout<<"[Client] [!Repeatedly!]"<< "Receive Seq = "<<data_msg.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
-                    }
-                }
-                else
-                {
-                    cout <<"[Client] "<< "Error Message!" << endl;
-                    exit(EXIT_FAILURE);
-                }
-            }
-        }
-        cout<<"[Client] "<< "Receive Successfully!"<<endl;
-        if (i != complete_num)
-        {
-            for(int j = 0 ; j < MSS ; j++)
-            {
-                file_buffer[i * MSS + j] = data_msg.Data[j];
-            }
-        }
-        else
-        {
-            for(int j = 0 ; j < last_length ; j++)
-            {
-                file_buffer[complete_num * MSS + j] = data_msg.Data[j];
-            }
-        }
-        cout<<"[Client] "<< "Finish Receiving!"<<endl;
-        Recv_File = fopen(file_name, "Recv_File");
-        if(file_buffer != NULL)
-        {
-            fwrite(file_buffer, sizeof(char), file_length, Recv_File);
-            fclose(Recv_File);
-            cout<<"[Client] "<< "Finish Writing File!"<<endl;
-        }
-        else
-        {
-            cout<<"[Client] "<< "Error in Writing File!"<<endl;
-            exit(EXIT_FAILURE);
-        }
+        cout <<"[Client] "<< "Error in Opening File!" << endl;
+        exit(EXIT_FAILURE);
     }
-}
-void Disconnect()//Client端主动断开连接
-{
-    Message discon_msg[4];
-
-    // First-Way Wavehand
-    int re = Send_FIN(discon_msg[0], Seq);
-    clock dismsg0_Send_Time = clock();
-    if (re > 0)
+    // char *file_buffer = new char[File_Size];
+    file.seekg(0, ios::end);
+    file_length = file.tellg();
+    file.seekg(0, ios::beg);
+    // cout<<"[Client] "<< "Finish Reading File!" << endl;
+    if(file_length > pow(2,32))
     {
-        cout <<"[Client] "<< "Send Message to Router! —— First-Way Wavehand" << endl;
-        discon_msg[0].Print_Message();
-    }
-    else
-    {
-        cout<<"[Client] "<<"Error in Sending Message! —— First-Way Wavehand"<<endl;
+        cout<<"[Client] "<< "File is too large!" << endl;
         exit(EXIT_FAILURE);
     }
 
-    // Second-Way Wavehand
+    Message send_msg;
+    strcpy(send_msg.Data, file_name.c_str());
+    send_msg.Data[strlen(send_msg.Data)] = '\0';
+    send_msg.Length = file_length;
+    send_msg.Seq = ++Seq;
+    send_msg.Set_CFH();
+    int re = Send(send_msg);
+    float msg1_Send_Time = clock();
+    if (re > 0)
+    {
+        cout <<"[Client] "<< "Send Message to Router! -- File Header" << endl;
+        // send_msg.Print_Message();
+    }
+
     while(true)
     {
-        if ((clock() - dismsg0_Send_Time) > Wait_Time)
+        Message tmp;
+        if (recvfrom(ClientSocket, (char *)&tmp, sizeof(tmp), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
         {
-            cout <<"[Client] "<< "Time Out! —— First-Way Wavehand" << endl;
-            int re = Send_SYN(con_msg[0]);
+            cout <<"[Client] "<< "Receive Message from Router! -- File Header" << endl;
+            // tmp.Print_Message();
+            if (tmp.Is_ACK() && tmp.CheckValid() && tmp.Seq == Seq + 1)
+            {
+                Seq = tmp.Seq;
+                // cout <<"[Client] "<< "Receive ACK!" << endl;
+                break;
+            }
+            else if (tmp.CheckValid() && tmp.Seq != Seq + 1)
+            {
+                Message reply_msg;
+                reply_msg.Ack = tmp.Seq;
+                reply_msg.Set_ACK();
+                // reply_msg.Seq = ++Seq;
+                if(Send(reply_msg)>0)
+                {
+                    cout<<"!Repeatedly! [Client]"<< "Receive Seq = "<<tmp.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
+                }
+            }
+        }
+        else if (clock()-msg1_Send_Time > Wait_Time)
+        {
+            int re = sendto(ClientSocket, (char *)&send_msg, sizeof(send_msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
             msg1_Send_Time = clock();
             if (re > 0)
             {
-                cout <<"[Client] "<< "Send Message to Router! —— First-Way Wavehand" << endl;
-                con_msg[0].Print_Message();
+                cout <<"[Client] "<< "Time Out! -- Send Message to Router! -- File Header" << endl;
+                // send_msg.Print_Message();
             }
             else
             {
-                cout<<"[Client] "<<"Error in Sending Message! —— First-Way Wavehand"<<endl;
+                cout<<"[Client] "<<"Error in Sending Message! -- File Header"<<endl;
                 exit(EXIT_FAILURE);
             }
         }
+    }
+    // file.read(file_buffer, file_length);
+    int complete_num = file_length / MSS;
+    int last_length = file_length % MSS;
+    cout <<"[Client] "<< "Start to Send Message to Router! -- File" << endl;
+    for(int i=0;i<=complete_num;i++)
+    {
+        Message data_msg;
+        if (i!=complete_num)
+        {
+            file.read(data_msg.Data, MSS);
+            // for(int j=0;j<MSS;j++)
+            // {
+            //     data_msg.Data[j] = file_buffer[i * MSS + j];
+            // }
+            data_msg.Length = MSS;
+            data_msg.Seq = ++Seq;
+            int re = Send(data_msg);
+            float time = clock();
+            if (re > 0)
+            {
+                // cout <<"[Client] "<< "Send Message to Router! Part " << i << "-- File" << endl;
+                // data_msg.Print_Message();
+                Message tmp;
+                while(true)
+                {
+                    if (recvfrom(ClientSocket, (char *)&tmp, sizeof(tmp), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+                    {
+                        // cout <<"[Client] "<< "Receive Message from Router! Part " << i << "-- File" << endl;
+                        // tmp.Print_Message();
+                        if (tmp.Is_ACK() && tmp.CheckValid() && tmp.Seq == Seq + 1)
+                        {
+                            Seq = tmp.Seq;
+                            // cout <<"[Client] "<< "Receive ACK!" << endl;
+                            break;
+                        }
+                        else if (tmp.CheckValid() && tmp.Seq != Seq + 1)
+                        {
+                            Message reply_msg;
+                            reply_msg.Ack = tmp.Seq;
+                            reply_msg.Set_ACK();
+                            // reply_msg.Seq = ++Seq;
+                            if(Send(reply_msg)>0)
+                            {
+                                cout<<"!Repeatedly! [Client]"<< "Receive Seq = "<<tmp.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
+                            }
+                        }
+                    }
+                    else if (clock()-time > Wait_Time)
+                    {
+                        int re = sendto(ClientSocket, (char *)&data_msg, sizeof(data_msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
+                        time = clock();
+                        if (re > 0)
+                        {
+                            cout <<"[Client] "<< "Time Out! -- Send Message to Router! Part " << i << "-- File" << endl;
+                            // data_msg.Print_Message();
+                        }
+                        else
+                        {
+                            cout<<"[Client] "<<"Error in Sending Message! Part "<<i<<" -- File"<<endl;
+                            exit(EXIT_FAILURE);
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            Message data_msg;
+            file.read(data_msg.Data, last_length);
+            // for(int j=0;j<last_length;j++)
+            // {
+            //     data_msg.Data[j] = file_buffer[complete_num * MSS + j];
+            // }
+            data_msg.Length = last_length;
+            data_msg.Seq = ++Seq;
+            int re = Send(data_msg);
+            float time = clock();
+            if (re > 0)
+            {
+                // cout <<"[Client] "<< "Send Message to Router! Part " << i << "-- File" << endl;
+                // data_msg.Print_Message();
+                Message tmp;
+                while(true)
+                {
+                    if (recvfrom(ClientSocket, (char *)&tmp, sizeof(tmp), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+                    {
+                        // cout <<"[Client] "<< "Receive Message from Router! Part " << i << "-- File" << endl;
+                        // tmp.Print_Message();
+                        if (tmp.Is_ACK() && tmp.CheckValid() && tmp.Seq == Seq + 1)
+                        {
+                            Seq = tmp.Seq;
+                            // cout <<"[Client] "<< "Receive ACK!" << endl;
+                            break;
+                        }
+                        else if (tmp.CheckValid() && tmp.Seq != Seq + 1)
+                        {
+                            Message reply_msg;
+                            reply_msg.Ack = tmp.Seq;
+                            reply_msg.Set_ACK();
+                            // reply_msg.Seq = ++Seq;
+                            if(Send(reply_msg)>0)
+                            {
+                                cout<<"!Repeatedly! [Client]"<< "Receive Seq = "<<tmp.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
+                            }
+                        }
+                    }
+                    else if (clock()-time > Wait_Time)
+                    {
+                        int re = sendto(ClientSocket, (char *)&data_msg, sizeof(data_msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
+                        time = clock();
+                        if (re > 0)
+                        {
+                            cout <<"[Client] "<< "Time Out! -- Send Message to Router! Part " << i << "-- File" << endl;
+                            // data_msg.Print_Message();
+                        }
+                        else
+                        {
+                            cout<<"[Client] "<<"Error in Sending Message! Part "<<i<<" -- File"<<endl;
+                            exit(EXIT_FAILURE);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    file.close();
+    cout<<"[Client] "<< "Finish Sending File!" << endl;
+}
+void Disconnect()// * Client端主动断开连接
+{
+    Message discon_msg[4];
+
+    // * First-Way Wavehand
+    discon_msg[0].Seq = ++Seq;
+    discon_msg[0].Set_FIN();
+    int re = Send(discon_msg[0]);
+    float dismsg0_Send_Time = clock();
+    if (re > 0)
+    {
+        // cout <<"[Client] "<< "Send Message to Router! -- First-Way Wavehand" << endl;
+        // discon_msg[0].Print_Message();
+    }
+
+
+    // * Second-Way Wavehand
+    while(true)
+    {
         if (recvfrom(ClientSocket, (char *)&discon_msg[1], sizeof(discon_msg[1]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
         {
-            cout <<"[Client] "<< "Receive Message from Router! —— Second-Way Wavehand" << endl;
-            discon_msg[1].Print_Message();
+            // cout <<"[Client] "<< "Receive Message from Router! -- Second-Way Wavehand" << endl;
+            // discon_msg[1].Print_Message();
             if (!(discon_msg[1].Is_ACK() && discon_msg[1].CheckValid() && discon_msg[1].Seq == Seq + 1 && discon_msg[1].Ack == discon_msg[0].Seq))
             {
                 cout <<"[Client] "<< "Error Message!" << endl;
                 exit(EXIT_FAILURE);
             }
-            cout <<"[Client] "<< "Second-Way Wavehand is successful!" << endl;
-            // Seq++;
+            Seq = discon_msg[1].Seq;
+            // cout <<"[Client] "<< "Second-Way Wavehand is successful!" << endl;
             break;
         }
-        else
+        if ((clock() - dismsg0_Send_Time) > Wait_Time)
         {
-            cout<<"[Client] "<<"Error in Receiving Message! —— Second-Way Wavehand"<<endl;
-            exit(EXIT_FAILURE);
+            cout <<"[Client] "<< "Time Out! -- First-Way Wavehand" << endl;
+            int re = Send(discon_msg[0]);
+            dismsg0_Send_Time = clock();
+            if (re > 0)
+            {
+                // cout <<"[Client] "<< "Send Message to Router! -- First-Way Wavehand" << endl;
+                // discon_msg[0].Print_Message();
+            }
         }
     }
-    // Third-Way Wavehand
+    // * Third-Way Wavehand
     while(true)
     {
         if (recvfrom(ClientSocket, (char *)&discon_msg[2], sizeof(discon_msg[2]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
         {
-            cout <<"[Client] "<< "Receive Message from Router! —— Third-Way Wavehand" << endl;
-            discon_msg[2].Print_Message();
+            // cout <<"[Client] "<< "Receive Message from Router! -- Third-Way Wavehand" << endl;
+            // discon_msg[2].Print_Message();
             if (!(discon_msg[2].Is_ACK() && discon_msg[2].Is_FIN() && discon_msg[2].CheckValid() && discon_msg[2].Seq == Seq + 1 && discon_msg[2].Ack == discon_msg[1].Seq))
             {
                 cout <<"[Client] "<< "Error Message!" << endl;
                 exit(EXIT_FAILURE);
             }
-            cout <<"[Client] "<< "Third-Way Wavehand is successful!" << endl;
-            // Seq++;
+            Seq = discon_msg[2].Seq;
+            // cout <<"[Client] "<< "Third-Way Wavehand is successful!" << endl;
             break;
         }
-        else
-        {
-            cout<<"[Client] "<<"Error in Receiving Message! —— Third-Way Wavehand"<<endl;
-            exit(EXIT_FAILURE);
-        }
     }
-    // Fourth-Way Wavehand
-    int re = Send_ACK(discon_msg[3], discon_msg[2].Seq);
+    // * Fourth-Way Wavehand
+    discon_msg[3].Ack = discon_msg[2].Seq;
+    discon_msg[3].Set_ACK();
+    discon_msg[3].Seq = ++Seq;
+    re = Send(discon_msg[3]);
     // clock dismsg3_Send_Time = clock();
     if (re > 0)
     {
-        cout <<"[Client] "<< "Send Message to Router! —— Fourth-Way Wavehand" << endl;
-        discon_msg[3].Print_Message();
+        // cout <<"[Client] "<< "Send Message to Router! -- Fourth-Way Wavehand" << endl;
+        // discon_msg[3].Print_Message();
     }
-    else
-    {
-        cout<<"[Client] "<<"Error in Sending Message! —— Fourth-Way Wavehand"<<endl;
-        exit(EXIT_FAILURE);
-    }
-    cout<<"[Client] "<< "Fourth-Way Wavehand is successful!" << endl;
+    cout<<"[Client] "<< "Fourth-Way Wavehand is successful!" << endl <<endl;
 
     Wait_Exit();
     return;
@@ -485,12 +447,16 @@ void Disconnect()//Client端主动断开连接
 void Wait_Exit()
 {
     Message exit_msg;
-    clock exit_msg_time = clock();
+    float exit_msg_time = clock();
     while(clock() - exit_msg_time < 2 * Wait_Time)
     {
         if (recvfrom(ClientSocket, (char *)&exit_msg, sizeof(exit_msg), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
         {
-            Send_ACK(exit_msg, Seq);
+            Seq = exit_msg.Seq;
+            exit_msg.Ack = exit_msg.Seq;
+            exit_msg.Set_ACK();
+            exit_msg.Seq = ++Seq;
+            Send(exit_msg);
         }
     }
     closesocket(ClientSocket);

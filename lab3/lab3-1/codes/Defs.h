@@ -1,39 +1,57 @@
-#ifndef MESSAGE_H
-#define MESSAGE_H
+#ifndef DEFS_H
+#define DEFS_H
 
 #include <iostream>
 #include <WinSock2.h>
 #include <stdlib.h>
-
+#include <fstream>
+#include <cstdlib>
+#include <cstring>
+#include <chrono>
+#include <time.h>
+#include <cmath>
 
 using namespace std;
 
 #pragma comment(lib, "Ws2_32.lib")
 
-#define File_Size 1024 * 8
-#define MSS 1010
-#define RSP 0b1
+
+SOCKADDR_IN RouterAddr;
+string RouterIP = "127.0.0.1";
+int RouterAddrLen = sizeof(RouterAddr);
+
+SOCKET ServerSocket;
+SOCKADDR_IN ServerAddr;
+string ServerIP = "127.0.0.1";
+int ServerAddrLen = sizeof(ServerAddr);
+
+SOCKET ClientSocket;
+SOCKADDR_IN ClientAddr;
+string ClientIP = "127.0.0.1";
+int ClientAddrLen = sizeof(ClientAddr);
+
+uint32_t file_length;
+
+#define MSS 1000
+#define FIN 0b1
 #define CFH 0b10
 #define ACK 0b100
 #define SYN 0b1000
-#define FIN 0b10000
 
-#define Router_Port 12345
+// #define Router_Port 12345
 #define Server_Port 65432
 #define Client_Port 54321
-#define Wait_Time 1000
+#define Wait_Time 5000
 
 #define _CRT_SECURE_NO_WARNINGS //禁止使用不安全的函数报错
 #define _WINSOCK_DEPRECATED_NO_WARNINGS //禁止使用旧版本的函数报错
 
 /* * 消息头部设计
- * |0             7|8             15|
+ * |0            15|16            31|
  * ----------------------------------
- * |             SrcIP              |
+ * |            SrcPort             |
  * ----------------------------------
- * |             DestIP             |
- * ----------------------------------
- * |    SrcPort    |    DestPort    |
+ * |           DestPort             |
  * ----------------------------------
  * |            SeqNum              |
  * ----------------------------------
@@ -41,50 +59,33 @@ using namespace std;
  * ----------------------------------
  * |            Length              |
  * ----------------------------------
- * |      Flag     |    CheckSum    |
+ * |      Flag     |      Check     |
  * ----------------------------------
  * |              Data              |
  * ----------------------------------
  *
  * Flag
- * |0  |1  |2  |3  |4  |5     6     7|
+ * |0  |1  |2  |3  |4              15|
  * -----------------------------------
- * |RSP|CFH|ACK|SYN|FIN|             |
+ * |FIN|CFH|ACK|SYN|                 |
  * -----------------------------------
  */
 #pragma pack(1)
-// struct File_Message{
-//     char *File_Name;
-//     uint16_t File_Size;
-// };
 
 struct Message
 {
+    uint32_t SrcPort;
+    uint32_t DstPort;
+    uint32_t Seq;
+    uint32_t Ack;
+    uint32_t Length;
+    uint16_t Flag;
+    uint16_t Check;
+    char Data[MSS];
 
-    uint16_t SrcIP;
-    uint16_t DstIP;
-    uint8_t SrcPort;
-    uint8_t DstPort;
-    uint16_t Seq;
-    uint16_t Ack;
-    uint16_t Length;
-    uint8_t Flag;
-    uint8_t Check;
-    char *Data[MSS];
+    Message() : SrcPort(0), DstPort(0), Seq(0), Ack(0), Length(0), Flag(0), Check(0) { memset(this->Data, 0, MSS); }
 
-    Message() : SrcIP(0), DestIP(0), SrcPort(0), DestPort(0), SeqNum(0), AckNum(0), Length(0), Flag(0), CheckSum(0) { memset(this->Data, 0, MSS); }
 
-    // void Set_SrcIP(uint16_t SrcIP) { this->SrcIP = SrcIP; }
-    // void Set_DstIP(uint16_t DstIP) { this->DstIP = DstIP; }
-    // void Set_SrcPort(uint8_t SrcPort) { this->SrcPort = SrcPort; }
-    // void Set_DstPort(uint8_t DstPort) { this->DstPort = DstPort; }
-    // void Set_Seq(uint16_t Seq) { this->Seq = Seq; }
-    // void Set_Ack(uint16_t Ack) { this->Ack = Ack; }
-    // void Set_Length(uint16_t Length) { this->Length = Length; }
-    //uint16_t Get_Length() { return this->Length; }
-
-    void Set_RSP() { this->Flag |= RSP; }
-    bool Is_RSP() { return this->Flag & RSP; }
     void Set_CFH() { this->Flag |= CFH; }
     bool Is_CFH() { return this->Flag & CFH; }
     void Set_ACK() { this->Flag |= ACK; }
@@ -108,24 +109,24 @@ void Message::Set_Check()
 {
     this->Check = 0;
     uint32_t sum = 0;
-    uint8_t *p = (uint8_t *)this;
-    for (int i = 0; i < sizeof(Message) / 2; i++)
+    uint16_t *p = (uint16_t *)this;
+    for (int i = 0; i < sizeof(*this) / 2; i++)
     {
-        sum += p[i];
+        sum += *p++;
         while (sum >> 16)
         {
             sum = (sum & 0xffff) + (sum >> 16);
         }
     }
-    this->Check = ~(sum & 0xffff); // 取反并保持其为16位
+    this->Check = ~(sum & 0xffff);
 }
 bool Message::CheckValid()
 {
     uint32_t sum = 0;
-    uint8_t *p = (uint8_t *)this;
-    for (int i = 0; i < sizeof(Message) / 2; i++)
+    uint16_t *p = (uint16_t *)this;
+    for (int i = 0; i < sizeof(*this) / 2; i++)
     {
-        sum += p[i];
+        sum += *p++;
         while (sum >> 16)
         {
             sum = (sum & 0xffff) + (sum >> 16);
@@ -143,15 +144,12 @@ void Message::Set_Data(char *data)
 void Message::Print_Message()
 {
     cout << "Message "
-         <<"[SrcIP: "<<this->SrcIP<<" ] "
-         <<"[DstIP: "<<this->DstIP<<" ] "
          <<"[SrcPort: "<<this->SrcPort<<" ] "
          <<"[DstPort: "<<this->DstPort<<" ] "
          <<"[Seq: "<<this->Seq<<" ] "
          <<"[Ack: "<<this->Ack<<" ] "
          <<"[Length: "<<this->Length<<" ] "
-         <<"[RSP: "<<this->Is_RSP()<<" ] "
-         <<"[RST: "<<this->Is_RST()<<" ] "
+         <<"[CFH: "<<this->Is_CFH()<<" ] "
          <<"[ACK: "<<this->Is_ACK()<<" ] "
          <<"[SYN: "<<this->Is_SYN()<<" ] "
          <<"[FIN: "<<this->Is_FIN()<<" ] "
@@ -159,3 +157,9 @@ void Message::Print_Message()
 }
 
 #endif
+
+//TODO
+/*
+* 传输时间、平均吞吐率
+* 吞吐率、延时，图形化分析
+*/
