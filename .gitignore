@@ -1,6 +1,6 @@
 **/VS
 **/node_modules
-*.DS_STore
+*.DS_Store
 **/.cache
 **/.bash_profile
 **/.history
