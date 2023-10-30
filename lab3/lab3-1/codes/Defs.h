@@ -10,6 +10,8 @@
 #include <chrono>
 #include <time.h>
 #include <cmath>
+#include <sys/time.h>
+
 
 using namespace std;
 
@@ -41,7 +43,7 @@ uint32_t file_length;
 // #define Router_Port 12345
 #define Server_Port 65432
 #define Client_Port 54321
-#define Wait_Time 5000
+#define Wait_Time 1000
 
 #define _CRT_SECURE_NO_WARNINGS //禁止使用不安全的函数报错
 #define _WINSOCK_DEPRECATED_NO_WARNINGS //禁止使用旧版本的函数报错
@@ -53,9 +55,9 @@ uint32_t file_length;
  * ----------------------------------
  * |           DestPort             |
  * ----------------------------------
- * |            SeqNum              |
+ * |             Seq                |
  * ----------------------------------
- * |            AckNum              |
+ * |             Ack                |
  * ----------------------------------
  * |            Length              |
  * ----------------------------------
@@ -157,8 +159,3 @@ void Message::Print_Message()
 }
 
 #endif
-
-//TODO
-/*
-* 吞吐率、延时，图形化分析
-*/
