@@ -196,6 +196,7 @@ bool Connect()
 }
 void Receive_Message()
 {
+
     Message rec_msg;
     while (true)
     {
@@ -257,6 +258,10 @@ void Receive_Message()
             {
                 // cout <<"[Server] "<< "Receive Message from Router!" << endl;
                 // data_msg.Print_Message();
+                if(data_msg.Seq < Seq + 1)
+                {
+                    continue;
+                }
                 if (data_msg.CheckValid() && data_msg.Seq == Seq + 1)
                 {
                     Seq = data_msg.Seq;
@@ -311,6 +316,10 @@ void Disconnect() // * Router端主动断开连接
         if (recvfrom(ServerSocket, (char *)&discon_msg[0], sizeof(discon_msg[0]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
         {
             // cout <<"[Server] "<< "Receive Message from Router! -- First-Way Wavehand" << endl;
+            if(discon_msg[0].Seq < Seq + 1)
+            {
+                continue;
+            }
             if (!(discon_msg[0].Is_FIN() && discon_msg[0].CheckValid() && discon_msg[0].Seq == Seq + 1))
             {
                 cout << "[Server] "

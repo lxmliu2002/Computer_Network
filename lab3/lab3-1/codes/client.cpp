@@ -249,7 +249,7 @@ void Send_Message(string file_path)
                 }
             }
         }
-        else if (clock() - msg1_Send_Time > last_time)
+        else if (clock() - msg1_Send_Time > Wait_Time)
         {
             int re = sendto(ClientSocket, (char *)&send_msg, sizeof(send_msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
             msg1_Send_Time = clock();
@@ -332,7 +332,7 @@ void Send_Message(string file_path)
                             }
                         }
                     }
-                    else if (clock() - time > every_time_usec)
+                    else if (clock() - time > Wait_Time)
                     {
                         int re = sendto(ClientSocket, (char *)&data_msg, sizeof(data_msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
                         time = clock();
@@ -407,7 +407,7 @@ void Send_Message(string file_path)
                             }
                         }
                     }
-                    else if (clock() - time > every_time_usec)
+                    else if (clock() - time > Wait_Time)
                     {
                         int re = sendto(ClientSocket, (char *)&data_msg, sizeof(data_msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
                         time = clock();
