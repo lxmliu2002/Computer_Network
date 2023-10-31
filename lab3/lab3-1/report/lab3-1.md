@@ -1,6 +1,6 @@
 # <center>**计算机网络实验报告**</center>
 
-## <center>**Lab3 基于 UDP 服务设计可靠传输协议**</center>
+## <center>**Lab3-1 基于 UDP 服务设计可靠传输协议**</center>
 
 ## <center> **网络空间安全学院 信息安全专业**</center>
 
@@ -99,7 +99,7 @@ https://github.com/lxmliu2002/Computer_Networking
 
 针对该情况，每个数据包发送时都设置相应的定时器与 Seq，接收时需要同时检验时间与 Seq，如果超时未收到对应的 ACK 确认报文，将重新发送数据；如果收到不符合预期的 Seq 报文，将丢弃报文，并输出日志，接着继续接收其他报文。
 
-### 5. 断开连接——四次挥手（以发送方主动断开连接为例）
+### 5. 断开连接——四次挥手（以发送端主动断开连接为例）
 
 本次实验仿照 TCP 协议，设计了四次挥手断开连接机制，示意图如下：
 
@@ -253,13 +253,13 @@ bool Client_Initial()
 }
 ```
 
-## （三）建立连接
+## （三）建立连接——三次握手
 
 ### 1. 发送端
 
 * 发送第一次握手消息，并开始计时，申请建立连接，然后等待接收第二次握手消息
   * 如果超时未收到，则重新发送
-* 收到第二次握手消息后，发送第三次握手消息
+* 收到正确的第二次握手消息后，发送第三次握手消息
 
 ```c++
 bool Connect()
@@ -317,8 +317,6 @@ bool Connect()
 
 ## （四）数据传输
 
-### 1. 发送端
-
 为避免代码冗余，首先包装了消息发送函数 `Send`。
 
 ```c++
@@ -330,6 +328,8 @@ int Send(Message &msg)
     return sendto(ClientSocket, (char *)&msg, sizeof(msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
 }
 ```
+
+### 1. 发送端
 
 编写了 `Send_Message` 函数用于数据发送。首先输入文件路径，按照路径寻找文件，获取到文件的名称及大小等信息，并以二进制方式读取文件数据。
 
@@ -548,23 +548,176 @@ for(int i=0;i<=complete_num;i++)
 
 ### 2. 接收端
 
-接收端首先接收发送端发送的文件头部信息，并根据 `CFH` 标志位进行确认。
-
-接着按照接收到的文件头部信息，以二进制方式打开文件，便于写入。然后循环接收报文消息，实时写入文件中。
+* 首先接收发送端发送的文件头部信息，并根据 `CFH` 标志位进行确认。
+* 接着按照接收到的文件头部信息，以二进制方式打开文件，便于写入。然后循环接收报文消息，实时写入文件中。
 
 未避免报告冗长，此处代码不再展示。
 
-## （五）断开连接
+## （五）断开连接——四次挥手（以发送端主动断开连接为例）
 
 ### 1. 发送端
 
+* 发送第一次挥手消息，并开始计时，提出断开连接，然后等待接收第二次挥手消息
+  * 如果超时未收到，则重新发送
+* 收到正确的第二次挥手消息后，等待接收第三次挥手消息
+* 接收到正确的第三次挥手消息，输出日志，准备断开连接
+* 再等待 `2 * Wait_Time` 时间（确保消息发送完毕），断开连接
 
+```c++
+void Disconnect() // * Client端主动断开连接
+{
+    Message discon_msg[4];
+    // * First-Way Wavehand
+    discon_msg[0].Seq = ++Seq;
+    discon_msg[0].Set_FIN();
+    int re = Send(discon_msg[0]);
+    float dismsg0_Send_Time = clock();
+    if (re > 0) {}
+    // * Second-Way Wavehand
+    while (true)
+    {
+        if (recvfrom(ClientSocket, (char *)&discon_msg[1], sizeof(discon_msg[1]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+        {
+            if (!(discon_msg[1].Is_ACK() && discon_msg[1].CheckValid() && discon_msg[1].Seq == Seq + 1 && discon_msg[1].Ack == discon_msg[0].Seq))
+            {
+                cout << "[Client] " << "Error Message!" << endl;
+                exit(EXIT_FAILURE);
+            }
+            Seq = discon_msg[1].Seq;
+            break;
+        }
+        if ((clock() - dismsg0_Send_Time) > Wait_Time)
+        {
+            cout << "[Client] " << "Time Out! -- First-Way Wavehand" << endl;
+            int re = Send(discon_msg[0]);
+            dismsg0_Send_Time = clock();
+            if (re > 0) {}
+        }
+    }
+    // * Third-Way Wavehand
+    while (true)
+    {
+        if (recvfrom(ClientSocket, (char *)&discon_msg[2], sizeof(discon_msg[2]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+        {
+            if (!(discon_msg[2].Is_ACK() && discon_msg[2].Is_FIN() && discon_msg[2].CheckValid() && discon_msg[2].Seq == Seq + 1 && discon_msg[2].Ack == discon_msg[1].Seq))
+            {
+                cout << "[Client] " << "Error Message!" << endl;
+                exit(EXIT_FAILURE);
+            }
+            Seq = discon_msg[2].Seq;
+            break;
+        }
+    }
+    // * Fourth-Way Wavehand
+    discon_msg[3].Ack = discon_msg[2].Seq;
+    discon_msg[3].Set_ACK();
+    discon_msg[3].Seq = ++Seq;
+    re = Send(discon_msg[3]);
+    if (re > 0) {}
+    cout << "[Client] " << "Fourth-Way Wavehand is successful!" << endl << endl;
+    Wait_Exit();
+    return;
+}
+void Wait_Exit()
+{
+    Message exit_msg;
+    float exit_msg_time = clock();
+    while (clock() - exit_msg_time < 2 * Wait_Time)
+    {
+        if (recvfrom(ClientSocket, (char *)&exit_msg, sizeof(exit_msg), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+        {
+            Seq = exit_msg.Seq;
+            exit_msg.Ack = exit_msg.Seq;
+            exit_msg.Set_ACK();
+            exit_msg.Seq = ++Seq;
+            Send(exit_msg);
+        }
+    }
+    closesocket(ClientSocket);
+    WSACleanup();
+    cout << "[Client] " << "Client is closed!" << endl;
+    system("pause");
+}
+```
 
 ### 2. 接收端
 
+* 接收正确第一次挥手消息，发送第二次挥手消息，同意断开连接
+* 发送第三次挥手消息，并开始计时，然后等待接收第四次挥手消息
+  * 如果超时未收到，则重新发送
+* 接收到正确的第四次挥手消息，输出日志，断开连接
 
-
-
+```c++
+void Disconnect() // * Router端主动断开连接
+{
+    Message discon_msg[4];
+    while (true)
+    {
+        // * First-Way Wavehand
+        if (recvfrom(ServerSocket, (char *)&discon_msg[0], sizeof(discon_msg[0]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+        {
+            if (!(discon_msg[0].Is_FIN() && discon_msg[0].CheckValid() && discon_msg[0].Seq == Seq + 1))
+            {
+                cout << "[Server] " << "Error Message!" << endl;
+                exit(EXIT_FAILURE);
+            }
+            Seq = discon_msg[0].Seq;
+        }
+        // * Second-Way Wavehand
+        discon_msg[1].Ack = discon_msg[0].Seq;
+        discon_msg[1].Seq = ++Seq;
+        discon_msg[1].Set_ACK();
+        int re = Send(discon_msg[1]);
+        if (re > 0) {}
+        break;
+    }
+    // * Third-Way Wavehand
+    discon_msg[2].Ack = discon_msg[1].Seq;
+    discon_msg[2].Seq = ++Seq;
+    discon_msg[2].Set_ACK();
+    discon_msg[2].Set_FIN();
+    int re = Send(discon_msg[2]);
+    float dismsg3_Send_Time = clock();
+    if (re > 0) {}
+    // * Fourth-Way Wavehand
+    while (true)
+    {
+        if (recvfrom(ServerSocket, (char *)&discon_msg[3], sizeof(discon_msg[3]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+        {
+            if (discon_msg[3].Seq < Seq + 1)
+            {
+                continue;
+            }
+            else if (!(discon_msg[3].Is_ACK() && discon_msg[3].CheckValid() && discon_msg[3].Seq == Seq + 1 && discon_msg[3].Ack == discon_msg[2].Seq))
+            {
+                cout << "[Server] " << "Error Message!" << endl;
+                exit(EXIT_FAILURE);
+            }
+            Seq = discon_msg[3].Seq;
+            cout << "[Server] " << "Fourth-Way Wavehand is successful!" << endl;
+            break;
+        }
+        if ((clock() - dismsg3_Send_Time) > Wait_Time)
+        {
+            int re = Send(discon_msg[2]);
+            dismsg3_Send_Time = clock();
+            if (re > 0)
+            {
+                cout << "[Server] " << "Time Out! -- Send Message to Router! -- Third-Way Wavehand" << endl;
+            }
+        }
+    }
+    Exit();
+    return;
+}
+void Exit()
+{
+    closesocket(ServerSocket);
+    WSACleanup();
+    cout << "[Server] " << "Server is closed!" << endl;
+    system("pause");
+}
+```
 
 
 
@@ -572,13 +725,89 @@ for(int i=0;i<=complete_num;i++)
 
 ## （一）传输测试
 
+### 1. 本机测试
+
+本次实验使用大中小三种类型文件进行传输测试，并使用 `wireshark` 进行抓包辅助测试。
+
+#### （1）小文件
+
+运行 `wireshark` ，设置过滤条件，接着启动发送端与接收端，首先可以看到我们设计的三次握手信息。
+
+
+
+接着设置好发生端与接收端信息，开始传输文件。此处以大小为
+
+的文件为例。
+
+
+
+传输完成，可以看到，累计用时
+
+吞吐率为
+
+
+
+右键查看文件属性，可以看到传输前后文件大小没有发生改变；打开文件，可以看到文件成功打开，说明传输无误。
+
+
+
+这是 `wireshark` 抓取的发送的数据包。
+
+
+
+接着断开连接，可以看到 `wireshark` 上抓取到我们设计的四次挥手相关信息。
+
+
+
+#### （2）中文件
+
+此处以大小为
+
+的文件为例。
+
+
+
+传输完成，可以看到，累计用时
+
+吞吐率为
+
+
+
+右键查看文件属性，可以看到传输前后文件大小没有发生改变；打开文件，可以看到文件成功打开，说明传输无误。
+
+
+
+#### （3）大文件
+
+此处以大小为
+
+的文件为例。
+
+
+
+传输完成，可以看到，累计用时
+
+吞吐率为
+
+
+
+右键查看文件属性，可以看到传输前后文件大小没有发生改变；打开文件，可以看到文件成功打开，说明传输无误。
+
+
+
+### 2. 局域网下联机测试
+
+本次实验中，还借助局域网进行联机测试。此处仅以上文提到的大文件传输为例进行测试说明。
+
 
 
 ## （二）性能分析
 
+在上面的传输测试中，添加日志输出，将传输时间、吞吐率、往返时延予以输出，借助 `python` 进行数据清洗，然后借助 `excel` 绘制了实时吞吐率与实时往返时延的数据分析折线图。
 
+### 
 
-
+可以直观看到，实时吞吐率，                 而实时往返时延稳定在 1000$\mu s$，偶尔会有波动。
 
 
 
