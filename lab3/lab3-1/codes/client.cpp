@@ -1,8 +1,8 @@
 #include "Defs.h"
 
-#define Router_Port 65432
-// #define Server_Port 65432
-#define Client_Port 54321
+// #define Router_Port 65432
+// // #define Server_Port 65432
+// #define Client_Port 54321
 
 WSADATA wsaData;
 
@@ -183,6 +183,7 @@ bool Connect()
 }
 void Send_Message(string file_path)
 {
+    strcpy(file_name, "");
     size_t found = file_path.find_last_of("/\\");
     string file_name = file_path.substr(found + 1);
 

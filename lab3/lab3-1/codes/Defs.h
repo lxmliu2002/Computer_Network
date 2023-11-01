@@ -34,13 +34,13 @@ int ClientAddrLen = sizeof(ClientAddr);
 
 uint32_t file_length;
 
-#define MSS 1000
+#define MSS 8168
 #define FIN 0b1
 #define CFH 0b10
 #define ACK 0b100
 #define SYN 0b1000
 
-// #define Router_Port 12345
+#define Router_Port 12345
 #define Server_Port 65432
 #define Client_Port 54321
 #define Wait_Time 1000

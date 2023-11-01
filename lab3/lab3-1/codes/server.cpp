@@ -1,8 +1,8 @@
 #include "Defs.h"
 
-#define Router_Port 54321
-#define Server_Port 65432
-// #define Client_Port 54321
+// #define Router_Port 54321
+// #define Server_Port 65432
+// // #define Client_Port 54321
 
 WSADATA wsaData;
 
@@ -196,7 +196,7 @@ bool Connect()
 }
 void Receive_Message()
 {
-
+    strcpy(file_name, "");
     Message rec_msg;
     while (true)
     {
