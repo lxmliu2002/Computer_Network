@@ -6,8 +6,7 @@
 
 WSADATA wsaData;
 
-char file_name[MSS];
-char Recv_File_Name[MSS];
+
 int Seq = 0;
 
 int Send(Message &msg);
@@ -196,7 +195,7 @@ bool Connect()
 }
 void Receive_Message()
 {
-    strcpy(file_name, "");
+    char file_name[MSS] = {};
     Message rec_msg;
     while (true)
     {

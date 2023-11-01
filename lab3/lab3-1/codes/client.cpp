@@ -6,7 +6,7 @@
 
 WSADATA wsaData;
 
-char *file_name;
+// char *file_name;
 
 int Seq = 0;
 
@@ -183,7 +183,7 @@ bool Connect()
 }
 void Send_Message(string file_path)
 {
-    strcpy(file_name, "");
+    // strcpy(file_name, "");
     size_t found = file_path.find_last_of("/\\");
     string file_name = file_path.substr(found + 1);
 
