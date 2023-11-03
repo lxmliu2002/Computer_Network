@@ -11,11 +11,14 @@
 #include <time.h>
 #include <cmath>
 #include <sys/time.h>
+#include <windows.h>
 
 
 using namespace std;
 
 #pragma comment(lib, "Ws2_32.lib")
+
+HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
 
 
 SOCKADDR_IN RouterAddr;

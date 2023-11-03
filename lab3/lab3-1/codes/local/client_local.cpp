@@ -1,8 +1,8 @@
 #include "Defs.h"
 
-// #define Router_Port 65432
-// // #define Server_Port 65432
-// #define Client_Port 54321
+#define Router_Port 65432
+// #define Server_Port 65432
+#define Client_Port 54321
 
 WSADATA wsaData;
 
@@ -136,14 +136,14 @@ bool Connect()
     if (re > 0)
     {
         // cout <<"[Client] "<< "Send Message to Router! -- First-Way Handshake" << endl;
-        // con_msg[0].Print_Message();
+        con_msg[0].Print_Message();
         // * Second-Way Handshake
         while (true)
         {
             if (recvfrom(ClientSocket, (char *)&con_msg[1], sizeof(con_msg[1]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
             {
                 // cout <<"[Client] "<< "Receive Message from Router! -- Second-Way Handshake" << endl;
-                // con_msg[1].Print_Message();
+                con_msg[1].Print_Message();
                 if (!(con_msg[1].Is_ACK() && con_msg[1].Is_SYN() && con_msg[1].CheckValid() && con_msg[1].Ack == con_msg[0].Seq))
                 {
                     cout << "[Client] "
@@ -159,9 +159,11 @@ bool Connect()
                 msg1_Send_Time = clock();
                 if (re > 0)
                 {
+                    SetConsoleTextAttribute(hConsole, 12);
                     cout << "[Client] "
                          << "Time Out! -- Send Message to Router! -- First-Way Handshake" << endl;
-                    // con_msg[0].Print_Message();
+                    con_msg[0].Print_Message();
+                    SetConsoleTextAttribute(hConsole, 7);
                 }
             }
         }
@@ -174,7 +176,7 @@ bool Connect()
     if (re > 0)
     {
         // cout <<"[Client] "<< "Send Message to Router! -- Third-Way Handshake" << endl;
-        // con_msg[2].Print_Message();
+        con_msg[2].Print_Message();
     }
     cout << "[Client] "
          << "Third-Way Handshake is successful!" << endl
@@ -219,7 +221,7 @@ void Send_Message(string file_path)
     {
         cout << "[Client] "
              << "Send Message to Router! -- File Header" << endl;
-        // send_msg.Print_Message();
+        send_msg.Print_Message();
     }
 
     while (true)
@@ -229,7 +231,7 @@ void Send_Message(string file_path)
         {
             cout << "[Client] "
                  << "Receive Message from Router! -- File Header" << endl;
-            // tmp.Print_Message();
+            tmp.Print_Message();
             if (tmp.Is_ACK() && tmp.CheckValid() && tmp.Seq == Seq + 1)
             {
                 Seq = tmp.Seq;
@@ -256,9 +258,11 @@ void Send_Message(string file_path)
             msg1_Send_Time = clock();
             if (re > 0)
             {
+                SetConsoleTextAttribute(hConsole, 12);
                 cout << "[Client] "
                      << "Time Out! -- Send Message to Router! -- File Header" << endl;
-                // send_msg.Print_Message();
+                send_msg.Print_Message();
+                SetConsoleTextAttribute(hConsole, 7);
             }
             else
             {
@@ -297,14 +301,14 @@ void Send_Message(string file_path)
             if (re > 0)
             {
                 // cout <<"[Client] "<< "Send Message to Router! Part " << i << "-- File" << endl;
-                // data_msg.Print_Message();
+                data_msg.Print_Message();
                 Message tmp;
                 while (true)
                 {
                     if (recvfrom(ClientSocket, (char *)&tmp, sizeof(tmp), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
                     {
                         // cout <<"[Client] "<< "Receive Message from Router! Part " << i << "-- File" << endl;
-                        // tmp.Print_Message();
+                        tmp.Print_Message();
                         if (tmp.Is_ACK() && tmp.CheckValid() && tmp.Seq == Seq + 1)
                         {
                             Seq = tmp.Seq;
@@ -339,9 +343,11 @@ void Send_Message(string file_path)
                         time = clock();
                         if (re > 0)
                         {
+                            SetConsoleTextAttribute(hConsole, 12);
                             cout << "[Client] "
                                  << "Time Out! -- Send Message to Router! Part " << i << "-- File" << endl;
-                            // data_msg.Print_Message();
+                            data_msg.Print_Message();
+                            SetConsoleTextAttribute(hConsole, 7);
                         }
                         else
                         {
@@ -372,14 +378,14 @@ void Send_Message(string file_path)
             if (re > 0)
             {
                 // cout <<"[Client] "<< "Send Message to Router! Part " << i << "-- File" << endl;
-                // data_msg.Print_Message();
+                data_msg.Print_Message();
                 Message tmp;
                 while (true)
                 {
                     if (recvfrom(ClientSocket, (char *)&tmp, sizeof(tmp), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
                     {
                         // cout <<"[Client] "<< "Receive Message from Router! Part " << i << "-- File" << endl;
-                        // tmp.Print_Message();
+                        tmp.Print_Message();
                         if (tmp.Is_ACK() && tmp.CheckValid() && tmp.Seq == Seq + 1)
                         {
                             Seq = tmp.Seq;
@@ -414,9 +420,11 @@ void Send_Message(string file_path)
                         time = clock();
                         if (re > 0)
                         {
+                            SetConsoleTextAttribute(hConsole, 12);
                             cout << "[Client] "
                                  << "Time Out! -- Send Message to Router! Part " << i << "-- File" << endl;
-                            // data_msg.Print_Message();
+                            data_msg.Print_Message();
+                            SetConsoleTextAttribute(hConsole, 7);
                         }
                         else
                         {
@@ -451,7 +459,7 @@ void Disconnect() // * Client端主动断开连接
     if (re > 0)
     {
         // cout <<"[Client] "<< "Send Message to Router! -- First-Way Wavehand" << endl;
-        // discon_msg[0].Print_Message();
+        discon_msg[0].Print_Message();
     }
 
     // * Second-Way Wavehand
@@ -460,7 +468,7 @@ void Disconnect() // * Client端主动断开连接
         if (recvfrom(ClientSocket, (char *)&discon_msg[1], sizeof(discon_msg[1]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
         {
             // cout <<"[Client] "<< "Receive Message from Router! -- Second-Way Wavehand" << endl;
-            // discon_msg[1].Print_Message();
+            discon_msg[1].Print_Message();
             if (!(discon_msg[1].Is_ACK() && discon_msg[1].CheckValid() && discon_msg[1].Seq == Seq + 1 && discon_msg[1].Ack == discon_msg[0].Seq))
             {
                 cout << "[Client] "
@@ -473,6 +481,7 @@ void Disconnect() // * Client端主动断开连接
         }
         if ((clock() - dismsg0_Send_Time) > Wait_Time)
         {
+            SetConsoleTextAttribute(hConsole, 12);
             cout << "[Client] "
                  << "Time Out! -- First-Way Wavehand" << endl;
             int re = Send(discon_msg[0]);
@@ -480,7 +489,8 @@ void Disconnect() // * Client端主动断开连接
             if (re > 0)
             {
                 // cout <<"[Client] "<< "Send Message to Router! -- First-Way Wavehand" << endl;
-                // discon_msg[0].Print_Message();
+                discon_msg[0].Print_Message();
+                SetConsoleTextAttribute(hConsole, 7);
             }
         }
     }
@@ -490,7 +500,7 @@ void Disconnect() // * Client端主动断开连接
         if (recvfrom(ClientSocket, (char *)&discon_msg[2], sizeof(discon_msg[2]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
         {
             // cout <<"[Client] "<< "Receive Message from Router! -- Third-Way Wavehand" << endl;
-            // discon_msg[2].Print_Message();
+            discon_msg[2].Print_Message();
             if (!(discon_msg[2].Is_ACK() && discon_msg[2].Is_FIN() && discon_msg[2].CheckValid() && discon_msg[2].Seq == Seq + 1 && discon_msg[2].Ack == discon_msg[1].Seq))
             {
                 cout << "[Client] "
@@ -511,11 +521,10 @@ void Disconnect() // * Client端主动断开连接
     if (re > 0)
     {
         // cout <<"[Client] "<< "Send Message to Router! -- Fourth-Way Wavehand" << endl;
-        // discon_msg[3].Print_Message();
+        discon_msg[3].Print_Message();
     }
     cout << "[Client] "
-         << "Fourth-Way Wavehand is successful!" << endl
-         << endl;
+         << "Fourth-Way Wavehand is successful!" << endl;
 
     Wait_Exit();
     return;
