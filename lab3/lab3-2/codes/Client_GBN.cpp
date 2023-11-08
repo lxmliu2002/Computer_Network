@@ -234,12 +234,8 @@ void Send_Message(string file_path)
     thread Receive_Ack_Thread(Receive_Ack);
     Message *data_msg = new Message[Msg_Num + 1];
     float complete_time = clock();
-    while (true)
+    while (!Finish)
     {
-        if (Finish)
-        {
-            break;
-        }
         if (Re_Send)
         {
             for (int i = 0; i < Next_Seq - Base_Seq; i++)

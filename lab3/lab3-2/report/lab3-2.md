@@ -440,9 +440,8 @@ Message *data_msg = new Message[Msg_Num + 1];
   * 此时借助前面定义的 Message 缓冲区，定位并重新发送窗口中的所有数据
 
 ```c++
-while (true)
+while (!Finish)
 {
-    if (Finish) break;
     if (Re_Send)
     {
         for (int i = 0; i < Next_Seq - Base_Seq; i++)
