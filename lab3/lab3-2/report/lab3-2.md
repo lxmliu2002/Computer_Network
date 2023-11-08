@@ -55,7 +55,7 @@ https://github.com/lxmliu2002/Computer_Networking
 
 ### 1. 建立连接——三次握手
 
-仿照 TCP 协议设计了连接的建立机制——三次握手，示意图如下：
+仿照 TCP 协议设计了连接的建立机制——三次握手，依旧使用停等机制，示意图如下：
 
 <img src="./pic/%E5%9B%BE%E7%89%871.png" style="zoom:50%;" />
 
@@ -63,47 +63,32 @@ https://github.com/lxmliu2002/Computer_Networking
 
 为了保证数据传输的可靠性，本次实验仿照 UDP 的校验和机制设计了差错检测机制。对消息头部和数据的所有 16 位字求和，然后对结果取反。算法原理同教材，不再赘述。
 
-### 3. 停等机制与接收确认
+### 3. 滑动窗口与累计确认
 
-按照实验要求，本次实验需要使用停等机制进行流量控制，即发送方发送完成后，要收到接收端返回的对应 ACK 确认报文才能进行下一步传输。按照前文叙述，应接收的确认报文的 Ack 等于发送的序列号 Seq。
+按照实验要求，在本次实验中，基于GBN流水线协议，使用固定窗口大小，实现了流量控制机制。
+
+<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231108211815.png" style="zoom: 33%;" />
+
+在 Defs.h 中定义了窗口大小 Windows_Size。在 Client_GBN.cpp 中，为了避免多线程导致的冲突，定义了基于原子操作的 Base_Seq 与 Next_Seq，用于标定窗口的位置。
+
+#### 发送端
+
+* 发送端的发送缓冲区大小和窗口大小一致，即发送端最多一次性发送 Windows_Size 个报文。
+* 通过两个指针来控制当前已经发送的报文序号和还未确认的报文序号。Base_Seq 指针表示的是当前已经确认的最大序列号，Next_Seq 指针表示的是当前已经发送的最大序列号，这之间的报文就是发送了但是还未被确认的部分。
+* 每当发送端接收到回应的 ACK 的时候，需要判断一下当前回应的序号是否超过了 Base_Seq ，如果超过了 Base_Seq ，则说明从 Base_Seq 到回应序号这部分的报文已经被确认了。
+* 此时可以向前滑动窗口，调整 Base_Seq 指针。而如果在一定时间内没有收到有效的 ACK，则重新发送从 Base_Seq 到 Next_Seq 之间的全部报文。
+
+#### 接收端
+
+* 每次收到发送端发送来的报文的时候，判断当前的序号是否为自己期待的序号，如果相符则接收成功，如果不相符，则返回已经确认的最大序号。
 
 ### 4. 超时重传
 
-本次实验实现了超时重传功能以解决数据包丢失及失序问题。即，发送端每次发送数据后立刻进行计时，如果超过最大等待时间 `Wait_Time `仍没有收到对应的接收端发送的 ACK 确认报文，将重新发送数据。
-
-#### （1）理想情况
-
-数据包正常发送，接收端正常接收，没有发生数据包丢失或失序问题。示意图如下：
-
-<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231030223020.png" style="zoom: 50%;" />
-
-#### （2）数据包发送丢失
-
-数据包正常发送，但发生数据包丢失问题。示意图如下：
-
-<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231030223202.png" style="zoom:50%;" />
-
-该种情况下，由于发送端发送时数据丢失，接收端没有收到消息而没有发送 ACK 确认报文，`Wait_Time` 时间后，发送端仍没有收到对应的 ACK 确认报文，此时发送端将重新发送数据。
-
-#### （3）数据包接收丢失
-
-数据包正常发送，但发生数据包丢失问题。示意图如下：
-
-<img src="./pic/1.jpg" style="zoom: 33%;" />
-
-该种情况下，由于发送端接收时数据丢失，接收端收到消息发送 ACK 确认报文，但该报文丢失，`Wait_Time` 时间后，发送端仍没有收到对应的 ACK 确认报文，此时发送端将重新发送数据。同时，接收端将对接收到的消息的 Seq 进行验证，如果与预期不符，将丢弃该数据包，并输出日志，接着继续接收其他报文。
-
-#### （4）数据包失序
-
-数据包正常发送，但是接收端或发送端由于种种原因发生数据包失序问题。示意图如下：
-
-<img src="./pic/2.jpg" style="zoom:50%;" />
-
-针对该情况，每个数据包发送时都设置相应的定时器与 Seq，接收时需要同时检验时间与 Seq，如果超时未收到对应的 ACK 确认报文，将重新发送数据；如果收到不符合预期的 Seq 报文，将丢弃报文，并输出日志，接着继续接收其他报文。
+本次实验中的超时重传参考了快速重传的思想实现。即，当接收到三个重复 Ack 时，重新发送当前窗口的所有数据报文。
 
 ### 5. 断开连接——四次挥手（以发送端主动断开连接为例）
 
-本次实验仿照 TCP 协议，设计了四次挥手断开连接机制，示意图如下：
+本次实验仿照 TCP 协议，设计了四次挥手断开连接机制，依旧使用停等机制，示意图如下：
 
 <img src="./pic/%E5%9B%BE%E7%89%872.png" style="zoom: 50%;" />
 
@@ -111,19 +96,11 @@ https://github.com/lxmliu2002/Computer_Networking
 
 #### （1）发送端
 
-* 建立连接，发送报文，Seq = x，启动计时器，等待回复
-
-  * 超时未收到 ACK 确认报文：重新发送数据并重新计时
-
-  * 收到 ACK 确认报文，但 Ack 不匹配：丢弃报文，输出日志，继续等待
-
-* 收到 ACK 确认报文，且 Ack 及相关标志位匹配成功：继续发送下一个报文或关闭连接
+<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231108213805.png" style="zoom: 33%;" />
 
 #### （2）接收端
 
-* 建立连接，等待接收
-  * 收到报文，但 Seq 或相关标志位不匹配：丢弃报文，输出日志，继续等待
-* 收到报文，且 Seq 或相关标志位匹配：接收报文，发送对应 Ack，继续等待下一个报文或关闭连接
+<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231108213812.png" style="zoom:33%;" />
 
 
 
@@ -264,7 +241,7 @@ bool Client_Initial()
 * 收到正确的第二次握手消息后，发送第三次握手消息
 
 ```c++
-bool Connect()
+void Connect()
 {
     Message con_msg[3];
     // * First-Way Handshake
@@ -272,16 +249,18 @@ bool Connect()
     con_msg[0].Set_SYN();
     int re = Send(con_msg[0]);
     float msg1_Send_Time = clock();
-    if (re > 0)
+    if (re)
     {
+        con_msg[0].Print_Message();
         // * Second-Way Handshake
-        while(true)
+        while (true)
         {
             if (recvfrom(ClientSocket, (char *)&con_msg[1], sizeof(con_msg[1]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
             {
-                if (!(con_msg[1].Is_ACK() && con_msg[1].Is_SYN() &&con_msg[1].CheckValid() && con_msg[1].Ack == con_msg[0].Seq))
+                con_msg[1].Print_Message();
+                if (!(con_msg[1].Is_ACK() && con_msg[1].Is_SYN() && con_msg[1].CheckValid() && con_msg[1].Ack == con_msg[0].Seq))
                 {
-                    cout <<"[Client] "<< "Error Message!" << endl;
+                    cout << "Error Message!" << endl;
                     exit(EXIT_FAILURE);
                 }
                 Seq = con_msg[1].Seq;
@@ -291,9 +270,12 @@ bool Connect()
             {
                 int re = Send(con_msg[0]);
                 msg1_Send_Time = clock();
-                if (re > 0)
+                if (re)
                 {
-                    cout <<"[Client] "<< "Time Out! -- Send Message to Router! -- First-Way Handshake" << endl;
+                    SetConsoleTextAttribute(hConsole, 12);
+                    cout << "!Time Out! -- Send Message to Router! -- First-Way Handshake" << endl;
+                    con_msg[0].Print_Message();
+                    SetConsoleTextAttribute(hConsole, 7);
                 }
             }
         }
@@ -302,10 +284,8 @@ bool Connect()
     con_msg[2].Ack = con_msg[1].Seq;
     con_msg[2].Seq = ++Seq;
     con_msg[2].Set_ACK();
-    re = Send(con_msg[2]);
-    if (re > 0) {}
-    cout<<"[Client] "<< "Third-Way Handshake is successful!" << endl <<endl;
-    return true;
+    if (Send(con_msg[2]);) con_msg[2].Print_Message();
+    cout << "Third-Way Handshake is successful!\n\n";
 }
 ```
 
@@ -333,6 +313,25 @@ int Send(Message &msg)
 
 ### 1. 发送端
 
+在 Defs.h 中定义了窗口大小 Windows_Size：
+
+```c++
+#define Windows_Size 20
+```
+
+为了避免多线程引起的数据读写冲突，定义了一系列基于原子操作的操作数，同时也定义了一个 mutex 用于控制输出。
+
+```c++
+atomic_int Base_Seq(1);
+atomic_int Next_Seq(1);
+atomic_int Header_Seq(0);
+atomic_int Count(0);
+int Msg_Num = 0;
+atomic_bool Re_Send(false);
+atomic_bool Finish(false);
+mutex mtx;
+```
+
 编写了 `Send_Message` 函数用于数据发送。首先输入文件路径，按照路径寻找文件，获取到文件的名称及大小等信息，并以二进制方式读取文件数据。
 
 ```c++
@@ -355,204 +354,187 @@ if(file_length > pow(2,32))
 }
 ```
 
-接着将文件的名称写入 `Message` 的 `Data` 数据段，将文件的大小写入 `Length`，然后将该信息发送出去，作为发送文件的头部信息。此处发送启用超时重传机制。
+接着编写了一个函数，用于多线程接收 Ack，并根据接收情况进行一些判定。
+
+* 定义了一个用于记录接收的 Ack 的值的 Err_Ack_Num。
+* 如果接收到的 Ack 大于目前窗口的 Base_Seq，则窗口向后移动。
+* 如果接收到的 Ack 与发送的消息总数 Msg_Num 相等，则说明发送完成，Finish 置为 true。
+* 如果接收到重复三个 Ack （此时 Count 的值为 3），则需要重新发送，Re_Send 置为 true。
 
 ```c++
-Message send_msg;
-strcpy(send_msg.Data, file_name.c_str());
-send_msg.Data[strlen(send_msg.Data)] = '\0';
-send_msg.Length = file_length;
-send_msg.Seq = ++Seq;
-send_msg.Set_CFH();
-float last_time;
-int re = Send(send_msg);
-float msg1_Send_Time = clock();
-if (re > 0)
+void Receive_Ack()
 {
-    cout <<"[Client] "<< "Send Message to Router! -- File Header" << endl;
-}
-
-while(true)
-{
-    Message tmp;
-    if (recvfrom(ClientSocket, (char *)&tmp, sizeof(tmp), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+    int Err_Ack_Num = 0;
+    while (true)
     {
-        cout <<"[Client] "<< "Receive Message from Router! -- File Header" << endl;
-        if (tmp.Is_ACK() && tmp.CheckValid() && tmp.Seq == Seq + 1)
+        Message ack_msg;
+        if (recvfrom(ClientSocket, (char *)&ack_msg, sizeof(ack_msg), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen))
         {
-            Seq = tmp.Seq;
-            last_time = clock() - msg1_Send_Time;
-            break;
-        }
-        else if (tmp.CheckValid() && tmp.Seq != Seq + 1)
-        {
-            Message reply_msg;
-            reply_msg.Ack = tmp.Seq;
-            reply_msg.Set_ACK();
-            if(Send(reply_msg)>0)
+            if (ack_msg.Is_ACK() && ack_msg.CheckValid())
             {
-                cout<<"!Repeatedly! [Client]"<< "Receive Seq = "<<tmp.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
+                lock_guard<mutex> lock(mtx);
+                cout << "Receive Ack = " << ack_msg.Ack << endl;
+                if (ack_msg.Ack > Base_Seq + Header_Seq) Base_Seq = ack_msg.Ack - Header_Seq + 1;
+                if (ack_msg.Ack - Header_Seq == Msg_Num + 1)
+                {
+                    Finish = true;
+                    return;
+                }
+                if (Err_Ack_Num != ack_msg.Ack)
+                {
+                    Err_Ack_Num = ack_msg.Ack;
+                    Count = 0;
+                }
+                else Count++;
+                if (Count == 3) Re_Send = true;
             }
         }
     }
-    else if (clock()-msg1_Send_Time > last_time)
+    return;
+}
+```
+
+在发送文件时，首先按照给定路径对文件进行读取。
+
+```c++
+size_t found = file_path.find_last_of("/\\");
+string file_name = file_path.substr(found + 1);
+ifstream file(file_path, ios::binary);
+if (!file.is_open())
+{
+	cout << "Error in Opening File!" << endl;
+	exit(EXIT_FAILURE);
+}
+file.seekg(0, ios::end);
+file_length = file.tellg();
+file.seekg(0, ios::beg);
+if (file_length > pow(2, 32))
+{
+	cout << "File is too large!" << endl;
+	exit(EXIT_FAILURE);
+}
+```
+
+接着计算待发送的消息总数 Msg_Num，创建新线程用于接收 Ack，同时按照计算出来的消息总数创建一个 Message 数组，作为缓冲区记录发送的数据。
+
+```c++
+int complete_num = file_length / MSS;
+int last_length = file_length % MSS;
+Header_Seq = Seq;
+if (last_length != 0)
+{
+    Msg_Num = complete_num + 1;
+}
+else
+{
+    Msg_Num = complete_num;
+}
+thread Receive_Ack_Thread(Receive_Ack);
+Message *data_msg = new Message[Msg_Num + 1];
+```
+
+接着循环发送数据：
+
+* 如果 Finish 为 true，说明文件发送完毕，则直接终止发送
+* 如果 Re_Send 为 true，说明出现丢失，需要重新发送
+  * 此时借助前面定义的 Message 缓冲区，定位并重新发送窗口中的所有数据
+
+```c++
+while (true)
+{
+    if (Finish) break;
+    if (Re_Send)
     {
-        int re = sendto(ClientSocket, (char *)&send_msg, sizeof(send_msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
-        msg1_Send_Time = clock();
-        if (re > 0)
+        for (int i = 0; i < Next_Seq - Base_Seq; i++)
         {
-            cout <<"[Client] "<< "Time Out! -- Send Message to Router! -- File Header" << endl;
+            lock_guard<mutex> lock(mtx);
+            if (Send(data_msg[Base_Seq + i - 1]))
+            {
+                SetConsoleTextAttribute(hConsole, 12);
+                cout << "!Re_Send! -- Send Message to Router!" << endl;
+                SetConsoleTextAttribute(hConsole, 7);
+                data_msg[Base_Seq + i - 1].Print_Message();
+            }
+            else
+            {
+                cout << "Error in Sending Message!" << endl;
+                exit(EXIT_FAILURE);
+            }
+        }
+        Re_Send = false;
+    }
+    if (Next_Seq < Base_Seq + Windows_Size && Next_Seq - 1 <= Msg_Num)
+    {
+        if (Next_Seq == 1)
+        {
+            lock_guard<mutex> lock(mtx);
+            strcpy(data_msg[Next_Seq - 1].Data, file_name.c_str());
+            data_msg[Next_Seq - 1].Data[strlen(data_msg[Next_Seq - 1].Data)] = '\0';
+            data_msg[Next_Seq - 1].Length = file_length;
+            data_msg[Next_Seq - 1].Seq = ++Seq;
+            data_msg[Next_Seq - 1].Set_CFH();
+        }
+        else if (Next_Seq - 1 == Msg_Num && last_length)
+        {
+            lock_guard<mutex> lock(mtx);
+            file.read(data_msg[Next_Seq - 1].Data, last_length);
+            data_msg[Next_Seq - 1].Length = last_length;
+            data_msg[Next_Seq - 1].Seq = ++Seq;
         }
         else
         {
-            cout<<"[Client] "<<"Error in Sending Message! -- File Header"<<endl;
+            lock_guard<mutex> lock(mtx);
+            file.read(data_msg[Next_Seq - 1].Data, MSS);
+            data_msg[Next_Seq - 1].Length = MSS;
+            data_msg[Next_Seq - 1].Seq = ++Seq;
+        }
+        if (Next_Seq % 17 == 0)
+        {
+            Next_Seq++;
+            continue;
+        }
+        if (Next_Seq % 19 == 0)
+        {
+            Sleep(10);
+            Next_Seq++;
+            continue;
+        }
+        if (Send(data_msg[Next_Seq - 1]))
+        {
+            lock_guard<mutex> lock(mtx);
+            data_msg[Next_Seq - 1].Print_Message();
+            Next_Seq++;
+            // Print_Window(Base_Seq + Header_Seq, Next_Seq + Header_Seq);
+        }
+        else
+        {
+            lock_guard<mutex> lock(mtx);
+            cout << "Error in Sending Message!" << endl;
             exit(EXIT_FAILURE);
         }
     }
 }
+Receive_Ack_Thread.join();
 ```
 
-在收到接收端发送的正确的确认报文后，进行后续文件的传输。
-
-* 按照文件大小，结合协议的设计中预留数据段的大小，计算完整的数据段个数以及不完全的数据段大小
-* 循环发送，并实时接收确认报文
-* 同时，设定计时器，计算往返时延，根据传输带宽确定等待时长；实时计算吞吐率与往返时延，设定日志输出
+最后重置相关操作数。
 
 ```c++
-struct timeval complete_time_start, complete_time_end;
-gettimeofday(&complete_time_start, NULL);
-float complete_time = clock();
-int complete_num = file_length / MSS;
-int last_length = file_length % MSS;
-cout <<"[Client] "<< "Start to Send Message to Router! -- File" << endl;
-for(int i=0;i<=complete_num;i++)
-{
-    Message data_msg;
-    if (i!=complete_num)
-    {
-        file.read(data_msg.Data, MSS);
-        data_msg.Length = MSS;
-        data_msg.Seq = ++Seq;
-        int re = Send(data_msg);
-        struct timeval every_time_start, every_time_end;
-        long long every_time_usec;
-        gettimeofday(&every_time_start, NULL);
-        float time = clock();
-        if (re > 0)
-        {
-            Message tmp;
-            while(true)
-            {
-                if (recvfrom(ClientSocket, (char *)&tmp, sizeof(tmp), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
-                {
-                    if (tmp.Is_ACK() && tmp.CheckValid() && tmp.Seq == Seq + 1)
-                    {
-                        Seq = tmp.Seq;
-                        gettimeofday(&every_time_end, NULL);
-                        every_time_usec = (every_time_end.tv_usec - every_time_start.tv_usec);
-                        if(i % 1 == 0)
-                        {
-                            gettimeofday(&complete_time_end, NULL);
-                            long long complete_time_usec = (complete_time_end.tv_usec - complete_time_start.tv_usec);
-                            time_txt << (complete_time_usec) << "," << (every_time_usec ) << "," << ((double)(MSS * i)/(complete_time_usec)*1000)<<endl;
-                        }
-                        break;
-                    }
-                    else if (tmp.CheckValid() && tmp.Seq != Seq + 1)
-                    {
-                        Message reply_msg;
-                        reply_msg.Ack = tmp.Seq;
-                        reply_msg.Set_ACK();
-                        if(Send(reply_msg)>0)
-                        {
-                            cout<<"!Repeatedly! [Client]"<< "Receive Seq = "<<tmp.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
-                        }
-                    }
-                }
-                else if (clock()-time > every_time_usec)
-                {
-                    int re = sendto(ClientSocket, (char *)&data_msg, sizeof(data_msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
-                    time = clock();
-                    if (re > 0)
-                    {
-                        cout <<"[Client] "<< "Time Out! -- Send Message to Router! Part " << i << "-- File" << endl;
-                    }
-                    else
-                    {
-                        cout<<"[Client] "<<"Error in Sending Message! Part "<<i<<" -- File"<<endl;
-                        exit(EXIT_FAILURE);
-                    }
-                }
-            }
-        }
-    }
-    else
-    {
-        Message data_msg;
-        file.read(data_msg.Data, last_length);
-        data_msg.Length = last_length;
-        data_msg.Seq = ++Seq;
-        int re = Send(data_msg);
-        // float every_time_start = clock();
-        struct timeval every_time_start, every_time_end;
-        long long every_time_usec;
-        gettimeofday(&every_time_start, NULL);
-        float time = clock();
-        if (re > 0)
-        {
-            Message tmp;
-            while(true)
-            {
-                if (recvfrom(ClientSocket, (char *)&tmp, sizeof(tmp), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
-                {
-                    if (tmp.Is_ACK() && tmp.CheckValid() && tmp.Seq == Seq + 1)
-                    {
-                        Seq = tmp.Seq;
-                        gettimeofday(&every_time_end, NULL);
-                        every_time_usec = (every_time_end.tv_usec - every_time_start.tv_usec);
-                        if(i % 1 == 0)
-                        {
-                            gettimeofday(&complete_time_end, NULL);
-                            long long complete_time_usec = (complete_time_end.tv_usec - complete_time_start.tv_usec);
-                            time_txt << (complete_time_usec) << "," << (every_time_usec ) << "," << ((double)(last_length)/(complete_time_usec)*1000);
-                        }
-                        break;
-                    }
-                    else if (tmp.CheckValid() && tmp.Seq != Seq + 1)
-                    {
-                        Message reply_msg;
-                        reply_msg.Ack = tmp.Seq;
-                        reply_msg.Set_ACK();
-                        if(Send(reply_msg)>0)
-                        {
-                            cout<<"!Repeatedly! [Client]"<< "Receive Seq = "<<tmp.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
-                        }
-                    }
-                }
-                else if (clock()-time > every_time_usec)
-                {
-                    int re = sendto(ClientSocket, (char *)&data_msg, sizeof(data_msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
-                    time = clock();
-                    if (re > 0)
-                    {
-                        cout <<"[Client] "<< "Time Out! -- Send Message to Router! Part " << i << "-- File" << endl;
-                    }
-                    else
-                    {
-                        cout<<"[Client] "<<"Error in Sending Message! Part "<<i<<" -- File"<<endl;
-                        exit(EXIT_FAILURE);
-                    }
-                }
-            }
-        }
-    }
-}
+lock_guard<mutex> lock(mtx);
+Next_Seq = 1;
+Base_Seq = 1;
+Finish = false;
+Re_Send = false;
+Header_Seq = 0;
+Msg_Num = 0;
 ```
 
 ### 2. 接收端
 
 * 首先接收发送端发送的文件头部信息，并根据 `CFH` 标志位进行确认。
-* 接着按照接收到的文件头部信息，以二进制方式打开文件，便于写入。然后循环接收报文消息，实时写入文件中。
+* 接着计算出待接收的消息的总数，并以此创建 Message 数组作为接收缓冲区。
+* 接着循环接收数据报，并将其数据写入到 Message 缓冲区中。
+* 接收完成后，将数据写入到文件中。
 
 未避免报告冗长，此处代码不再展示。
 
@@ -570,24 +552,23 @@ for(int i=0;i<=complete_num;i++)
 void Disconnect() // * Client端主动断开连接
 {
     Message discon_msg[4];
+
     // * First-Way Wavehand
     discon_msg[0].Seq = ++Seq;
     discon_msg[0].Set_FIN();
     int re = Send(discon_msg[0]);
     float dismsg0_Send_Time = clock();
-    if (re > 0) {}
+    if (re) discon_msg[0].Print_Message();
     // * Second-Way Wavehand
     while (true)
     {
-        if(discon_msg[0].Seq < Seq + 1)
-        {
-            continue;
-        }
         if (recvfrom(ClientSocket, (char *)&discon_msg[1], sizeof(discon_msg[1]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
         {
-            if (!(discon_msg[1].Is_ACK() && discon_msg[1].CheckValid() && discon_msg[1].Seq == Seq + 1 && discon_msg[1].Ack == discon_msg[0].Seq))
+            discon_msg[1].Print_Message();
+            if (discon_msg[1].Seq < Seq + 1) continue;
+            else if (!(discon_msg[1].Is_ACK() && discon_msg[1].CheckValid() && discon_msg[1].Seq == Seq + 1 && discon_msg[1].Ack == discon_msg[0].Seq))
             {
-                cout << "[Client] " << "Error Message!" << endl;
+                cout << "Error Message!" << endl;
                 exit(EXIT_FAILURE);
             }
             Seq = discon_msg[1].Seq;
@@ -595,10 +576,15 @@ void Disconnect() // * Client端主动断开连接
         }
         if ((clock() - dismsg0_Send_Time) > Wait_Time)
         {
-            cout << "[Client] " << "Time Out! -- First-Way Wavehand" << endl;
+            SetConsoleTextAttribute(hConsole, 12);
+            cout << "!Time Out! -- First-Way Wavehand" << endl;
             int re = Send(discon_msg[0]);
             dismsg0_Send_Time = clock();
-            if (re > 0) {}
+            if (re)
+            {
+                discon_msg[0].Print_Message();
+                SetConsoleTextAttribute(hConsole, 7);
+            }
         }
     }
     // * Third-Way Wavehand
@@ -606,9 +592,10 @@ void Disconnect() // * Client端主动断开连接
     {
         if (recvfrom(ClientSocket, (char *)&discon_msg[2], sizeof(discon_msg[2]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
         {
+            discon_msg[2].Print_Message();
             if (!(discon_msg[2].Is_ACK() && discon_msg[2].Is_FIN() && discon_msg[2].CheckValid() && discon_msg[2].Seq == Seq + 1 && discon_msg[2].Ack == discon_msg[1].Seq))
             {
-                cout << "[Client] " << "Error Message!" << endl;
+                cout << "Error Message!" << endl;
                 exit(EXIT_FAILURE);
             }
             Seq = discon_msg[2].Seq;
@@ -619,11 +606,12 @@ void Disconnect() // * Client端主动断开连接
     discon_msg[3].Ack = discon_msg[2].Seq;
     discon_msg[3].Set_ACK();
     discon_msg[3].Seq = ++Seq;
-    re = Send(discon_msg[3]);
-    if (re > 0) {}
-    cout << "[Client] " << "Fourth-Way Wavehand is successful!" << endl << endl;
+    if (Send(discon_msg[3]))
+    {
+        discon_msg[3].Print_Message();
+    }
+    cout << "Fourth-Way Wavehand is successful!" << endl;
     Wait_Exit();
-    return;
 }
 void Wait_Exit()
 {
@@ -631,7 +619,7 @@ void Wait_Exit()
     float exit_msg_time = clock();
     while (clock() - exit_msg_time < 2 * Wait_Time)
     {
-        if (recvfrom(ClientSocket, (char *)&exit_msg, sizeof(exit_msg), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+        if (recvfrom(ClientSocket, (char *)&exit_msg, sizeof(exit_msg), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen))
         {
             Seq = exit_msg.Seq;
             exit_msg.Ack = exit_msg.Seq;
@@ -642,8 +630,7 @@ void Wait_Exit()
     }
     closesocket(ClientSocket);
     WSACleanup();
-    cout << "[Client] " << "Client is closed!" << endl;
-    system("pause");
+    cout << "Client is closed!" << endl;
 }
 ```
 
@@ -663,9 +650,10 @@ void Disconnect() // * Router端主动断开连接
         // * First-Way Wavehand
         if (recvfrom(ServerSocket, (char *)&discon_msg[0], sizeof(discon_msg[0]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
         {
-            if (!(discon_msg[0].Is_FIN() && discon_msg[0].CheckValid() && discon_msg[0].Seq == Seq + 1))
+            discon_msg[0].Print_Message();
+            if (!(discon_msg[0].Is_FIN() && discon_msg[0].CheckValid()))
             {
-                cout << "[Server] " << "Error Message!" << endl;
+                cout << "Error Message!" << endl;
                 exit(EXIT_FAILURE);
             }
             Seq = discon_msg[0].Seq;
@@ -674,8 +662,7 @@ void Disconnect() // * Router端主动断开连接
         discon_msg[1].Ack = discon_msg[0].Seq;
         discon_msg[1].Seq = ++Seq;
         discon_msg[1].Set_ACK();
-        int re = Send(discon_msg[1]);
-        if (re > 0) {}
+        if (Send(discon_msg[1])) discon_msg[1].Print_Message();
         break;
     }
     // * Third-Way Wavehand
@@ -685,44 +672,43 @@ void Disconnect() // * Router端主动断开连接
     discon_msg[2].Set_FIN();
     int re = Send(discon_msg[2]);
     float dismsg3_Send_Time = clock();
-    if (re > 0) {}
+    if (re) discon_msg[2].Print_Message();
     // * Fourth-Way Wavehand
     while (true)
     {
         if (recvfrom(ServerSocket, (char *)&discon_msg[3], sizeof(discon_msg[3]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
         {
-            if (discon_msg[3].Seq < Seq + 1)
-            {
-                continue;
-            }
+            discon_msg[3].Print_Message();
+            if (discon_msg[3].Seq < Seq + 1) continue;
             else if (!(discon_msg[3].Is_ACK() && discon_msg[3].CheckValid() && discon_msg[3].Seq == Seq + 1 && discon_msg[3].Ack == discon_msg[2].Seq))
             {
-                cout << "[Server] " << "Error Message!" << endl;
+                cout << "Error Message!" << endl;
                 exit(EXIT_FAILURE);
             }
             Seq = discon_msg[3].Seq;
-            cout << "[Server] " << "Fourth-Way Wavehand is successful!" << endl;
+            cout << "Fourth-Way Wavehand is successful!\n\n";
             break;
         }
         if ((clock() - dismsg3_Send_Time) > Wait_Time)
         {
             int re = Send(discon_msg[2]);
             dismsg3_Send_Time = clock();
-            if (re > 0)
+            if (re)
             {
-                cout << "[Server] " << "Time Out! -- Send Message to Router! -- Third-Way Wavehand" << endl;
+                HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+                cout << "!Time Out! -- Send Message to Router! -- Third-Way Wavehand" << endl;
+                discon_msg[2].Print_Message();
+                SetConsoleTextAttribute(hConsole, 7);
             }
         }
     }
     Exit();
-    return;
 }
 void Exit()
 {
     closesocket(ServerSocket);
     WSACleanup();
-    cout << "[Server] " << "Server is closed!" << endl;
-    system("pause");
+    cout << "Server is closed!" << endl;
 }
 ```
 
@@ -732,65 +718,79 @@ void Exit()
 
 ## （一）传输测试
 
+本次实验中，手动编写了丢包与时延模拟。
+
+```c++
+if (Next_Seq % 17 == 0)
+{
+    Next_Seq++;
+    continue;
+}
+if (Next_Seq % 19 == 0)
+{
+    Sleep(10);
+    Next_Seq++;
+    continue;
+}
+```
+
 ### 1. 本机测试
 
-本次实验使用大中小三种类型文件进行传输测试，并使用 `wireshark` 进行抓包辅助测试。
+本次实验在本机上实现了给定测试文件的测试
 
-#### （1）小文件
+#### （1）三次握手
 
-运行 `wireshark` ，设置过滤条件，接着启动发送端与接收端，首先可以看到我们设计的三次握手信息。
+可以看到，发送端与接收端成功完成三次握手，建立连接。
 
-<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231031095755.png" style="zoom: 50%;" />
+<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231108223715.png" style="zoom: 33%;" />
 
-接着设置好发生端与接收端信息，开始传输文件。此处以大小为 219Byte 的文件 `1.txt` 为例。
+#### （2）helloworld.txt
 
-设置好路由转发，丢包率 10%，时延 100ms。
+传输完成，可以看到，累计用时 646 $ms$，吞吐率为 2402.97 $Byte/ms$。
 
-<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231101130124.png" style="zoom: 33%;" />
-
-传输完成，可以看到，累计用时 120 $ms$，吞吐率为 1.825 $Byte/ms$。
-
-![](./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231101130337.png)
+<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231108223049.png" style="zoom: 33%;" />
 
 右键查看文件属性，可以看到传输前后文件大小没有发生改变；打开文件，可以看到文件成功打开，说明传输无误。
 
-<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231031100158.png" style="zoom: 50%;" />
+#### （3）1.jpg
 
-这是 `wireshark` 抓取的发送的数据包。
+红色输出即为丢包部分，可以看到能够在丢包情况下实现数据传输。
 
-<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231031100316.png" style="zoom: 33%;" />
+传输完成，可以看到，累计用时 2822 $ms$，吞吐率为 658.169 $Byte/ms$。
 
-接着断开连接，可以看到 `wireshark` 上抓取到我们设计的四次挥手相关信息。
-
-<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231031100503.png" style="zoom:50%;" />
-
-#### （2）中文件
-
-此处以大小为 417109478 Byte 的文件 `2.mp4` 为例，不使用路由转发。
-
-传输完成，可以看到，累计用时 18204 $ms$，吞吐率为 22913.1 $Byte/ms$。
-
-<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231031103245.png" style="zoom:50%;" />
+<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231108223237.png" style="zoom:33%;" />
 
 右键查看文件属性，可以看到传输前后文件大小没有发生改变；打开文件，可以看到文件成功打开，说明传输无误。
 
-#### （3）大文件
+#### （4）2.jpg
 
-此处以大小为 3193755074 Byte 的文件 `3.mp4` 为例，不使用路由转发。
+传输完成，可以看到，累计用时 3984 $ms$，吞吐率为 1480.55 $Byte/ms$。
 
-传输完成，可以看到，累计用时 143841$ms$，吞吐率为 22203.4 $Byte/ms$。
-
-<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231031103420.png" style="zoom:50%;" />
+<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231108223739.png" style="zoom: 33%;" />
 
 右键查看文件属性，可以看到传输前后文件大小没有发生改变；打开文件，可以看到文件成功打开，说明传输无误。
+
+#### （5）3.jpg
+
+传输完成，可以看到，累计用时 7690 $ms$，吞吐率为 1556.44 $Byte/ms$。
+
+<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231108223759.png" style="zoom:33%;" />
+
+右键查看文件属性，可以看到传输前后文件大小没有发生改变；打开文件，可以看到文件成功打开，说明传输无误。
+
+#### （6）四次挥手
+
+可以看到发送端与接收端成功完成四次挥手，断开连接。
+
+<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231108223817.png" style="zoom:33%;" />
 
 ### 2. 局域网下联机测试
 
-本次实验中，还借助局域网进行联机测试。此处仅以上文提到的中文件传输为例进行测试说明。
+本次实验中，还借助局域网进行联机测试。仅以 3.jpg 为例进行展示。
 
-传输完成，可以看到，累计用时 1.48844e+06 $ms$，吞吐率为 280.232 $Byte/ms$。
+传输完成，可以看到，累计用时 7363 $ms$，吞吐率为 1625.56 $Byte/ms$。
 
-<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231031112121.png" style="zoom:33%;" />
+<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231108225039.png" style="zoom:33%;" />
 
 右键查看文件属性，可以看到传输前后文件大小没有发生改变；打开文件，可以看到文件成功打开，说明传输无误。
 
@@ -798,11 +798,11 @@ void Exit()
 
 ## （二）性能分析
 
-在上面的传输测试中，添加日志输出，将传输时间、吞吐率、往返时延予以输出，借助 `python` 进行数据清洗，然后借助 `excel` 绘制了实时吞吐率与实时往返时延的数据分析折线图。
+在上面的传输测试中，添加日志输出，将传输时间、吞吐率、往返时延予以输出，进行数据清洗，然后使用 `excel` 绘制了实时吞吐率与实时往返时延的数据分析折线图。
 
-<img src="./pic/%E5%9B%BE%E7%89%873.png" style="zoom: 67%;" />
+<img src="./pic/%E5%9B%BE%E7%89%873.png" style="zoom:50%;" />
 
-可以直观看到，实时吞吐率逐渐提升并稳定在 26000 $\mu s$，而实时往返时延稳定在 1000 $\mu s$，偶尔会有波动。
+可以直观看到，实时吞吐率逐渐提升并稳定在 33800 $Byte/ms$，而实时往返时延稳定在约 800 $\mu s$，偶尔会有波动。
 
 
 
@@ -812,16 +812,10 @@ void Exit()
 
 在结构体定义代码处的 `#pragma pack(1)` 是一个编译器指令，用于告诉编译器以最小的字节对齐单位对结构体进行打包，该处即以 16 字节进行对齐。如果不加该指令，编译的时候可能会由于优化等过程改变原有的数据报文设计。
 
-## （二）设置缓冲区，导致无法传输大文件
+## （二）创新超时重传机制
 
-原本设想设定一个巨大的缓冲区，将文件全部读入其中后再传，全部接收完成后再一起写入新文件。但是这样一来浪费空间，二来无法传输大型文件。
+本次实验中借鉴快速重传机制重新设计了超时重传机制，这样既可以保证数据传输的完整可靠，又实现了按照网络带宽实时确定重传时间，保证了传输效率。
 
-改进后，去掉了缓冲区，采取读一点发一点写一点的策略，按照设计的 `MSS` 读取文件，然后写入数据段发送，接收端收到数据后，以 `MSS` 为单位写入新文件，跳过缓冲区的使用。
+## （三）全 0 数据
 
-## （三）根据带宽情况，实时调整等待时间
-
-程序原本统一使用宏定义的 `Wait_Time` 作为重传等待时间，但是这样就会导致效率低下等问题。参考教材，修改了重传等待机制，将上一个消息的往返时延作为当前消息的重传等待时间。这样就实现了按照网络带宽实时确定重传等待时间，提高了传输效率。
-
-## （四）联机状态下传输慢
-
-在使用局域网联机测试时，传输效率较低，推测可能由于协议数据段较小，每次传输数据较少，需要多次传输。
+数据传输时，有时会出现数据全 0 的情况，即源端口号、目的端口号、数据段等均为 0 的情况，目前仍未解决。需要向老师或助教求助。
