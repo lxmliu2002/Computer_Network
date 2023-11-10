@@ -71,31 +71,23 @@ https://github.com/lxmliu2002/Computer_Networking
 
 #### （1）理想情况
 
-数据包正常发送，接收端正常接收，没有发生数据包丢失或失序问题。示意图如下：
-
-<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231030223020.png" style="zoom: 50%;" />
+数据包正常发送，接收端正常接收，没有发生数据包丢失或失序问题。
 
 #### （2）数据包发送丢失
 
-数据包正常发送，但发生数据包丢失问题。示意图如下：
-
-<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231030223202.png" style="zoom:50%;" />
+数据包正常发送，但发生数据包发送时丢失问题。
 
 该种情况下，由于发送端发送时数据丢失，接收端没有收到消息而没有发送 ACK 确认报文，`Wait_Time` 时间后，发送端仍没有收到对应的 ACK 确认报文，此时发送端将重新发送数据。
 
 #### （3）数据包接收丢失
 
-数据包正常发送，但发生数据包丢失问题。示意图如下：
-
-<img src="./pic/1.jpg" style="zoom: 33%;" />
+数据包正常发送，但发生数据包接收时丢失问题。
 
 该种情况下，由于发送端接收时数据丢失，接收端收到消息发送 ACK 确认报文，但该报文丢失，`Wait_Time` 时间后，发送端仍没有收到对应的 ACK 确认报文，此时发送端将重新发送数据。同时，接收端将对接收到的消息的 Seq 进行验证，如果与预期不符，将丢弃该数据包，并输出日志，接着继续接收其他报文。
 
 #### （4）数据包失序
 
-数据包正常发送，但是接收端或发送端由于种种原因发生数据包失序问题。示意图如下：
-
-<img src="./pic/2.jpg" style="zoom:50%;" />
+数据包正常发送，但是接收端或发送端由于种种原因发生数据包失序问题。
 
 针对该情况，每个数据包发送时都设置相应的定时器与 Seq，接收时需要同时检验时间与 Seq，如果超时未收到对应的 ACK 确认报文，将重新发送数据；如果收到不符合预期的 Seq 报文，将丢弃报文，并输出日志，接着继续接收其他报文。
 
@@ -116,6 +108,8 @@ https://github.com/lxmliu2002/Computer_Networking
   * 收到 ACK 确认报文，但 Ack 不匹配：丢弃报文，输出日志，继续等待
 
 * 收到 ACK 确认报文，且 Ack 及相关标志位匹配成功：继续发送下一个报文或关闭连接
+  * 如果接收到错误报文，则将其丢弃，并重新等待
+
 
 #### （2）接收端
 
@@ -279,8 +273,7 @@ bool Connect()
             {
                 if (!(con_msg[1].Is_ACK() && con_msg[1].Is_SYN() &&con_msg[1].CheckValid() && con_msg[1].Ack == con_msg[0].Seq))
                 {
-                    cout <<"[Client] "<< "Error Message!" << endl;
-                    exit(EXIT_FAILURE);
+                    continue;
                 }
                 Seq = con_msg[1].Seq;
                 break;
@@ -301,7 +294,6 @@ bool Connect()
     con_msg[2].Seq = ++Seq;
     con_msg[2].Set_ACK();
     re = Send(con_msg[2]);
-    if (re > 0) {}
     cout<<"[Client] "<< "Third-Way Handshake is successful!" << endl <<endl;
     return true;
 }
@@ -466,6 +458,10 @@ for(int i=0;i<=complete_num;i++)
                             cout<<"!Repeatedly! [Client]"<< "Receive Seq = "<<tmp.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
                         }
                     }
+                    else
+                    {
+                        continue;
+                    }
                 }
                 else if (clock()-time > every_time_usec)
                 {
@@ -526,6 +522,10 @@ for(int i=0;i<=complete_num;i++)
                             cout<<"!Repeatedly! [Client]"<< "Receive Seq = "<<tmp.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
                         }
                     }
+                    else
+                    {
+                        continue;
+                    }
                 }
                 else if (clock()-time > every_time_usec)
                 {
@@ -551,6 +551,8 @@ for(int i=0;i<=complete_num;i++)
 
 * 首先接收发送端发送的文件头部信息，并根据 `CFH` 标志位进行确认。
 * 接着按照接收到的文件头部信息，以二进制方式打开文件，便于写入。然后循环接收报文消息，实时写入文件中。
+  * 如果收到错误消息（比如校验和检查不通过等）则将其丢弃。
+
 
 未避免报告冗长，此处代码不再展示。
 
@@ -585,8 +587,7 @@ void Disconnect() // * Client端主动断开连接
         {
             if (!(discon_msg[1].Is_ACK() && discon_msg[1].CheckValid() && discon_msg[1].Seq == Seq + 1 && discon_msg[1].Ack == discon_msg[0].Seq))
             {
-                cout << "[Client] " << "Error Message!" << endl;
-                exit(EXIT_FAILURE);
+                continue;
             }
             Seq = discon_msg[1].Seq;
             break;
@@ -606,8 +607,7 @@ void Disconnect() // * Client端主动断开连接
         {
             if (!(discon_msg[2].Is_ACK() && discon_msg[2].Is_FIN() && discon_msg[2].CheckValid() && discon_msg[2].Seq == Seq + 1 && discon_msg[2].Ack == discon_msg[1].Seq))
             {
-                cout << "[Client] " << "Error Message!" << endl;
-                exit(EXIT_FAILURE);
+                continue;
             }
             Seq = discon_msg[2].Seq;
             break;
@@ -663,8 +663,7 @@ void Disconnect() // * Router端主动断开连接
         {
             if (!(discon_msg[0].Is_FIN() && discon_msg[0].CheckValid() && discon_msg[0].Seq == Seq + 1))
             {
-                cout << "[Server] " << "Error Message!" << endl;
-                exit(EXIT_FAILURE);
+                continue;
             }
             Seq = discon_msg[0].Seq;
         }
@@ -695,8 +694,7 @@ void Disconnect() // * Router端主动断开连接
             }
             else if (!(discon_msg[3].Is_ACK() && discon_msg[3].CheckValid() && discon_msg[3].Seq == Seq + 1 && discon_msg[3].Ack == discon_msg[2].Seq))
             {
-                cout << "[Server] " << "Error Message!" << endl;
-                exit(EXIT_FAILURE);
+                continue;
             }
             Seq = discon_msg[3].Seq;
             cout << "[Server] " << "Fourth-Way Wavehand is successful!" << endl;
