@@ -10,7 +10,7 @@ https://github.com/lxmliu2002/Computer_Networking
 
 # 一、实验内容
 
-利用数据报套接字在用户空间实现面向连接的可靠数据传输，功能包括：建立连接、差错检测、接收确认、超时重传等。采用基于滑动窗口的流量控制机制，发送窗口和接收窗口采取相同大小，支持累积确认，完成给定测试文件的传输。
+利用数据报套接字在用户空间实现面向连接的可靠数据传输，功能包括：建立连接、差错检测、接收确认、超时重传等。采用基于滑动窗口的流量控制机制，接收窗口大小为 1，发送窗口大小大于 1，支持累积确认，完成给定测试文件的传输。
 
 
 
@@ -80,7 +80,7 @@ https://github.com/lxmliu2002/Computer_Networking
 
 #### 接收端
 
-* 每次收到发送端发送来的报文的时候，判断当前的序号是否为自己期待的序号，如果相符则接收成功，如果不相符，则返回已经确认的最大序号。
+* 每次收到发送端发送来的报文的时候，判断当前的序号是否为自己期待的序号，如果相符则接收成功，窗口向后移动；如果不相符，则返回已经确认的最大序号。
 
 ### 4. 超时重传
 
@@ -375,6 +375,7 @@ void Receive_Ack()
                 lock_guard<mutex> lock(mtx);
                 cout << "Receive Ack = " << ack_msg.Ack << endl;
                 if (ack_msg.Ack > Base_Seq + Header_Seq) Base_Seq = ack_msg.Ack - Header_Seq + 1;
+                Print_Window(Base_Seq + Header_Seq, Next_Seq + Header_Seq);
                 if (ack_msg.Ack - Header_Seq == Msg_Num + 1)
                 {
                     Finish = true;
@@ -385,8 +386,15 @@ void Receive_Ack()
                     Err_Ack_Num = ack_msg.Ack;
                     Count = 0;
                 }
-                else Count++;
-                if (Count == 3) Re_Send = true;
+                else
+                {
+                    Count++;
+                    if (Count == 3)
+                    {
+                        Re_Send = true;
+                        Count = 0;
+                    }
+                }
             }
         }
     }
@@ -531,11 +539,53 @@ Msg_Num = 0;
 ### 2. 接收端
 
 * 首先接收发送端发送的文件头部信息，并根据 `CFH` 标志位进行确认。
-* 接着计算出待接收的消息的总数，并以此创建 Message 数组作为接收缓冲区。
-* 接着循环接收数据报，并将其数据写入到 Message 缓冲区中。
-* 接收完成后，将数据写入到文件中。
 
-未避免报告冗长，此处代码不再展示。
+* 接着计算出待接收的消息的总数，并以此创建 Message 数组作为接收缓冲区。
+
+* 接着循环接收数据报，并将其数据写入到 Message 缓冲区中。
+
+  * 特别的，为了避免进入“睡眠”状态，引入了 Sleep_Time，如果接收到的错误 Seq 数量超过 10，则向发送端发送三个相同的已经接收的最大 Ack，刺激发送端重新发送数据。
+
+    ```c++
+    else if (Sleep_Time == 10)
+    {
+        Message reply_msg;
+        reply_msg.Ack = Waiting_Seq - 1;
+        reply_msg.Set_ACK();
+        for (int j = 0; j < 3; j++)
+        {
+            if (Send(reply_msg))
+            {
+                SetConsoleTextAttribute(hConsole, 12);
+                cout << "Time Out! Trying to Get New Message! Waiting_Seq = " << Waiting_Seq << endl;
+                SetConsoleTextAttribute(hConsole, 7);
+            }
+        }
+        Sleep_Time = 0;
+    }
+    ```
+
+  * 设置了一个 Last_Time 变量，记录上一次收到数据的时间。如果超过 Wait_Time 为收到数据，则向发送端发送数据，刺激其重新发送数据。
+
+    ```c++
+    if (clock() - Last_Time > Wait_Time)
+    {
+        Message reply_msg;
+        reply_msg.Ack = Waiting_Seq - 1;
+        reply_msg.Set_ACK();
+        for (int j = 0; j < 3; j++)
+        {
+            if (Send(reply_msg))
+            {
+                SetConsoleTextAttribute(hConsole, 12);
+                cout << "Time Out! Trying to Get New Message! Waiting_Seq = " << Waiting_Seq << endl;
+                SetConsoleTextAttribute(hConsole, 7);
+            }
+        }
+    }
+    ```
+
+* 接收完成后，将数据写入到文件中。
 
 ## （五）断开连接——四次挥手（以发送端主动断开连接为例）
 

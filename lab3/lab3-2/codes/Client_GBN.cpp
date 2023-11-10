@@ -14,6 +14,7 @@ int Msg_Num = 0;
 atomic_bool Re_Send(false);
 atomic_bool Finish(false);
 mutex mtx;
+// atomic_int Sleep_Time(0);
 
 int Send(Message &msg);
 void Client_Initial();
@@ -189,10 +190,11 @@ void Receive_Ack()
                 else
                 {
                     Count++;
-                }
-                if (Count == 3)
-                {
-                    Re_Send = true;
+                    if (Count == 3)
+                    {
+                        Re_Send = true;
+                        Count = 0;
+                    }
                 }
             }
         }
