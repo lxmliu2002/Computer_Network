@@ -164,44 +164,62 @@ void Receive_Message()
     {
         if (recvfrom(ServerSocket, (char *)&rec_msg, sizeof(rec_msg), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen))
         {
-            if (rec_msg.Seq < Waiting_Seq)
+            if (rec_msg.Seq == 0)
             {
-                Sleep_Time++;
-                continue;
-            }
-            else
-            {
-                rec_msg.Print_Message();
-                if (rec_msg.Is_CFH() && rec_msg.CheckValid() && rec_msg.Seq == Waiting_Seq)
+                Message reply_msg;
+                reply_msg.Ack = Waiting_Seq - 1;
+                reply_msg.Set_ACK();
+                for (int j = 0; j < 3; j++)
                 {
-                    file_length = rec_msg.Length;
-                    strcpy(file_name, rec_msg.Data);
-                    cout << "Receive File Name: " << file_name << " File Size: " << file_length << endl;
-                    Message reply_msg;
-                    reply_msg.Ack = rec_msg.Seq;
-                    reply_msg.Set_ACK();
-                    if (Send(reply_msg) > 0)
-                    {
-                        Waiting_Seq++;
-                        break;
-                    }
-                }
-                else if (rec_msg.Is_CFH() && rec_msg.CheckValid() && rec_msg.Seq != Waiting_Seq)
-                {
-                    Message reply_msg;
-                    reply_msg.Ack = Waiting_Seq - 1;
-                    reply_msg.Set_ACK();
                     if (Send(reply_msg))
                     {
                         SetConsoleTextAttribute(hConsole, 12);
-                        cout << "Receive_Seq = " << rec_msg.Seq << " Waiting_Seq = " << Waiting_Seq << endl;
+                        cout << "Zero Seq! Trying to Get New Message! Waiting_Seq = " << Waiting_Seq << endl;
                         SetConsoleTextAttribute(hConsole, 7);
                     }
                 }
+            }
+            else
+            {
+                if (rec_msg.Seq < Waiting_Seq)
+                {
+                    Sleep_Time++;
+                    continue;
+                }
                 else
                 {
-                    cout << "Error Message!" << endl;
-                    exit(EXIT_FAILURE);
+                    rec_msg.Print_Message();
+                    if (rec_msg.Is_CFH() && rec_msg.CheckValid() && rec_msg.Seq == Waiting_Seq)
+                    {
+                        file_length = rec_msg.Length;
+                        strcpy(file_name, rec_msg.Data);
+                        cout << "Receive File Name: " << file_name << " File Size: " << file_length << endl;
+                        Message reply_msg;
+                        reply_msg.Ack = rec_msg.Seq;
+                        reply_msg.Set_ACK();
+                        if (Send(reply_msg) > 0)
+                        {
+                            Waiting_Seq++;
+                            break;
+                        }
+                    }
+                    else if (rec_msg.Is_CFH() && rec_msg.CheckValid() && rec_msg.Seq != Waiting_Seq)
+                    {
+                        Message reply_msg;
+                        reply_msg.Ack = Waiting_Seq - 1;
+                        reply_msg.Set_ACK();
+                        if (Send(reply_msg))
+                        {
+                            SetConsoleTextAttribute(hConsole, 12);
+                            cout << "Receive_Seq = " << rec_msg.Seq << " Waiting_Seq = " << Waiting_Seq << endl;
+                            SetConsoleTextAttribute(hConsole, 7);
+                        }
+                    }
+                    else
+                    {
+                        cout << "Error Message!" << endl;
+                        exit(EXIT_FAILURE);
+                    }
                 }
             }
         }

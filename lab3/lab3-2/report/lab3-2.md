@@ -867,4 +867,22 @@ if (Next_Seq % 19 == 0)
 
 ## （三）全 0 数据
 
-数据传输时，有时会出现数据全 0 的情况，即源端口号、目的端口号、数据段等均为 0 的情况，目前仍未解决。需要向老师或助教求助。
+数据传输时，有时会出现数据全 0 的情况，即源端口号、目的端口号、数据段等均为 0 的情况，目前仍未曾知晓产生原因。为了避免其对运行的干扰，在接收端做了对应的修改。即，当接收到全 0 数据时，将向发送端发送等待的最大 Ack，刺激其进行快速重传操作。
+
+```c++
+if (rec_msg.Seq == 0)
+{
+    Message reply_msg;
+    reply_msg.Ack = Waiting_Seq - 1;
+    reply_msg.Set_ACK();
+    for (int j = 0; j < 3; j++)
+    {
+        if (Send(reply_msg))
+        {
+            SetConsoleTextAttribute(hConsole, 12);
+            cout << "Zero Seq! Trying to Get New Message! Waiting_Seq = " << Waiting_Seq << endl;
+            SetConsoleTextAttribute(hConsole, 7);
+        }
+    }
+}
+```
