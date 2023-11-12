@@ -175,10 +175,7 @@ void Message::Set_Check()
     for (int i = 0; i < sizeof(*this) / 2; i++)
     {
         sum += *p++;
-        while (sum >> 16)
-        {
-            sum = (sum & 0xffff) + (sum >> 16);
-        }
+        while (sum >> 16) sum = (sum & 0xffff) + (sum >> 16);
     }
     this->Check = ~(sum & 0xffff);
 }
@@ -189,10 +186,7 @@ bool Message::CheckValid()
     for (int i = 0; i < sizeof(*this) / 2; i++)
     {
         sum += *p++;
-        while (sum >> 16)
-        {
-            sum = (sum & 0xffff) + (sum >> 16);
-        }
+        while (sum >> 16) sum = (sum & 0xffff) + (sum >> 16);
     }
     return (sum & 0xffff) == 0xffff;
 }
@@ -264,17 +258,14 @@ bool Connect()
     con_msg[0].Set_SYN();
     int re = Send(con_msg[0]);
     float msg1_Send_Time = clock();
-    if (re > 0)
+    if (re)
     {
         // * Second-Way Handshake
         while(true)
         {
-            if (recvfrom(ClientSocket, (char *)&con_msg[1], sizeof(con_msg[1]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+            if (recvfrom(ClientSocket, (char *)&con_msg[1], sizeof(con_msg[1]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen))
             {
-                if (!(con_msg[1].Is_ACK() && con_msg[1].Is_SYN() &&con_msg[1].CheckValid() && con_msg[1].Ack == con_msg[0].Seq))
-                {
-                    continue;
-                }
+                if (!(con_msg[1].Is_ACK() && con_msg[1].Is_SYN() &&con_msg[1].CheckValid() && con_msg[1].Ack == con_msg[0].Seq)) continue;
                 Seq = con_msg[1].Seq;
                 break;
             }
@@ -282,10 +273,7 @@ bool Connect()
             {
                 int re = Send(con_msg[0]);
                 msg1_Send_Time = clock();
-                if (re > 0)
-                {
-                    cout <<"[Client] "<< "Time Out! -- Send Message to Router! -- First-Way Handshake" << endl;
-                }
+                if (re)  cout <<"[Client] "<< "Time Out! -- Send Message to Router! -- First-Way Handshake" << endl;
             }
         }
     }
@@ -357,15 +345,11 @@ send_msg.Set_CFH();
 float last_time;
 int re = Send(send_msg);
 float msg1_Send_Time = clock();
-if (re > 0)
-{
-    cout <<"[Client] "<< "Send Message to Router! -- File Header" << endl;
-}
-
+if (re) cout <<"[Client] "<< "Send Message to Router! -- File Header" << endl;
 while(true)
 {
     Message tmp;
-    if (recvfrom(ClientSocket, (char *)&tmp, sizeof(tmp), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+    if (recvfrom(ClientSocket, (char *)&tmp, sizeof(tmp), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen))
     {
         cout <<"[Client] "<< "Receive Message from Router! -- File Header" << endl;
         if (tmp.Is_ACK() && tmp.CheckValid() && tmp.Seq == Seq + 1)
@@ -379,20 +363,14 @@ while(true)
             Message reply_msg;
             reply_msg.Ack = tmp.Seq;
             reply_msg.Set_ACK();
-            if(Send(reply_msg)>0)
-            {
-                cout<<"!Repeatedly! [Client]"<< "Receive Seq = "<<tmp.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
-            }
+            if(Send(reply_msg)) cout<<"!Repeatedly! [Client]"<< "Receive Seq = "<<tmp.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
         }
     }
     else if (clock()-msg1_Send_Time > last_time)
     {
         int re = sendto(ClientSocket, (char *)&send_msg, sizeof(send_msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
         msg1_Send_Time = clock();
-        if (re > 0)
-        {
-            cout <<"[Client] "<< "Time Out! -- Send Message to Router! -- File Header" << endl;
-        }
+        if (re) cout <<"[Client] "<< "Time Out! -- Send Message to Router! -- File Header" << endl;
         else
         {
             cout<<"[Client] "<<"Error in Sending Message! -- File Header"<<endl;
@@ -428,12 +406,12 @@ for(int i=0;i<=complete_num;i++)
         long long every_time_usec;
         gettimeofday(&every_time_start, NULL);
         float time = clock();
-        if (re > 0)
+        if (re)
         {
             Message tmp;
             while(true)
             {
-                if (recvfrom(ClientSocket, (char *)&tmp, sizeof(tmp), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+                if (recvfrom(ClientSocket, (char *)&tmp, sizeof(tmp), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen))
                 {
                     if (tmp.Is_ACK() && tmp.CheckValid() && tmp.Seq == Seq + 1)
                     {
@@ -467,10 +445,7 @@ for(int i=0;i<=complete_num;i++)
                 {
                     int re = sendto(ClientSocket, (char *)&data_msg, sizeof(data_msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
                     time = clock();
-                    if (re > 0)
-                    {
-                        cout <<"[Client] "<< "Time Out! -- Send Message to Router! Part " << i << "-- File" << endl;
-                    }
+                    if (re) cout <<"[Client] "<< "Time Out! -- Send Message to Router! Part " << i << "-- File" << endl;
                     else
                     {
                         cout<<"[Client] "<<"Error in Sending Message! Part "<<i<<" -- File"<<endl;
@@ -492,12 +467,12 @@ for(int i=0;i<=complete_num;i++)
         long long every_time_usec;
         gettimeofday(&every_time_start, NULL);
         float time = clock();
-        if (re > 0)
+        if (re)
         {
             Message tmp;
             while(true)
             {
-                if (recvfrom(ClientSocket, (char *)&tmp, sizeof(tmp), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+                if (recvfrom(ClientSocket, (char *)&tmp, sizeof(tmp), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen))
                 {
                     if (tmp.Is_ACK() && tmp.CheckValid() && tmp.Seq == Seq + 1)
                     {
@@ -517,24 +492,15 @@ for(int i=0;i<=complete_num;i++)
                         Message reply_msg;
                         reply_msg.Ack = tmp.Seq;
                         reply_msg.Set_ACK();
-                        if(Send(reply_msg)>0)
-                        {
-                            cout<<"!Repeatedly! [Client]"<< "Receive Seq = "<<tmp.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
-                        }
+                        if(Send(reply_msg)>0) cout<<"!Repeatedly! [Client]"<< "Receive Seq = "<<tmp.Seq<<" Reply Ack = "<<reply_msg.Ack<<endl;
                     }
-                    else
-                    {
-                        continue;
-                    }
+                    else continue;
                 }
                 else if (clock()-time > every_time_usec)
                 {
                     int re = sendto(ClientSocket, (char *)&data_msg, sizeof(data_msg), 0, (SOCKADDR *)&RouterAddr, RouterAddrLen);
                     time = clock();
-                    if (re > 0)
-                    {
-                        cout <<"[Client] "<< "Time Out! -- Send Message to Router! Part " << i << "-- File" << endl;
-                    }
+                    if (re) cout <<"[Client] "<< "Time Out! -- Send Message to Router! Part " << i << "-- File" << endl;
                     else
                     {
                         cout<<"[Client] "<<"Error in Sending Message! Part "<<i<<" -- File"<<endl;
@@ -573,42 +539,31 @@ void Disconnect() // * Client端主动断开连接
     // * First-Way Wavehand
     discon_msg[0].Seq = ++Seq;
     discon_msg[0].Set_FIN();
-    int re = Send(discon_msg[0]);
+    Send(discon_msg[0]);
     float dismsg0_Send_Time = clock();
-    if (re > 0) {}
     // * Second-Way Wavehand
     while (true)
     {
-        if(discon_msg[0].Seq < Seq + 1)
+        if(discon_msg[0].Seq < Seq + 1) continue;
+        if (recvfrom(ClientSocket, (char *)&discon_msg[1], sizeof(discon_msg[1]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen))
         {
-            continue;
-        }
-        if (recvfrom(ClientSocket, (char *)&discon_msg[1], sizeof(discon_msg[1]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
-        {
-            if (!(discon_msg[1].Is_ACK() && discon_msg[1].CheckValid() && discon_msg[1].Seq == Seq + 1 && discon_msg[1].Ack == discon_msg[0].Seq))
-            {
-                continue;
-            }
+            if (!(discon_msg[1].Is_ACK() && discon_msg[1].CheckValid() && discon_msg[1].Seq == Seq + 1 && discon_msg[1].Ack == discon_msg[0].Seq)) continue;
             Seq = discon_msg[1].Seq;
             break;
         }
         if ((clock() - dismsg0_Send_Time) > Wait_Time)
         {
             cout << "[Client] " << "Time Out! -- First-Way Wavehand" << endl;
-            int re = Send(discon_msg[0]);
+            Send(discon_msg[0]);
             dismsg0_Send_Time = clock();
-            if (re > 0) {}
         }
     }
     // * Third-Way Wavehand
     while (true)
     {
-        if (recvfrom(ClientSocket, (char *)&discon_msg[2], sizeof(discon_msg[2]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+        if (recvfrom(ClientSocket, (char *)&discon_msg[2], sizeof(discon_msg[2]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen))
         {
-            if (!(discon_msg[2].Is_ACK() && discon_msg[2].Is_FIN() && discon_msg[2].CheckValid() && discon_msg[2].Seq == Seq + 1 && discon_msg[2].Ack == discon_msg[1].Seq))
-            {
-                continue;
-            }
+            if (!(discon_msg[2].Is_ACK() && discon_msg[2].Is_FIN() && discon_msg[2].CheckValid() && discon_msg[2].Seq == Seq + 1 && discon_msg[2].Ack == discon_msg[1].Seq)) continue;
             Seq = discon_msg[2].Seq;
             break;
         }
@@ -617,8 +572,7 @@ void Disconnect() // * Client端主动断开连接
     discon_msg[3].Ack = discon_msg[2].Seq;
     discon_msg[3].Set_ACK();
     discon_msg[3].Seq = ++Seq;
-    re = Send(discon_msg[3]);
-    if (re > 0) {}
+    Send(discon_msg[3]);
     cout << "[Client] " << "Fourth-Way Wavehand is successful!" << endl << endl;
     Wait_Exit();
     return;
@@ -629,7 +583,7 @@ void Wait_Exit()
     float exit_msg_time = clock();
     while (clock() - exit_msg_time < 2 * Wait_Time)
     {
-        if (recvfrom(ClientSocket, (char *)&exit_msg, sizeof(exit_msg), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+        if (recvfrom(ClientSocket, (char *)&exit_msg, sizeof(exit_msg), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen))
         {
             Seq = exit_msg.Seq;
             exit_msg.Ack = exit_msg.Seq;
@@ -659,20 +613,16 @@ void Disconnect() // * Router端主动断开连接
     while (true)
     {
         // * First-Way Wavehand
-        if (recvfrom(ServerSocket, (char *)&discon_msg[0], sizeof(discon_msg[0]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+        if (recvfrom(ServerSocket, (char *)&discon_msg[0], sizeof(discon_msg[0]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen))
         {
-            if (!(discon_msg[0].Is_FIN() && discon_msg[0].CheckValid() && discon_msg[0].Seq == Seq + 1))
-            {
-                continue;
-            }
+            if (!(discon_msg[0].Is_FIN() && discon_msg[0].CheckValid() && discon_msg[0].Seq == Seq + 1)) continue;
             Seq = discon_msg[0].Seq;
         }
         // * Second-Way Wavehand
         discon_msg[1].Ack = discon_msg[0].Seq;
         discon_msg[1].Seq = ++Seq;
         discon_msg[1].Set_ACK();
-        int re = Send(discon_msg[1]);
-        if (re > 0) {}
+        Send(discon_msg[1]);
         break;
     }
     // * Third-Way Wavehand
@@ -680,22 +630,15 @@ void Disconnect() // * Router端主动断开连接
     discon_msg[2].Seq = ++Seq;
     discon_msg[2].Set_ACK();
     discon_msg[2].Set_FIN();
-    int re = Send(discon_msg[2]);
+    Send(discon_msg[2]);
     float dismsg3_Send_Time = clock();
-    if (re > 0) {}
     // * Fourth-Way Wavehand
     while (true)
     {
-        if (recvfrom(ServerSocket, (char *)&discon_msg[3], sizeof(discon_msg[3]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen) > 0)
+        if (recvfrom(ServerSocket, (char *)&discon_msg[3], sizeof(discon_msg[3]), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen))
         {
-            if (discon_msg[3].Seq < Seq + 1)
-            {
-                continue;
-            }
-            else if (!(discon_msg[3].Is_ACK() && discon_msg[3].CheckValid() && discon_msg[3].Seq == Seq + 1 && discon_msg[3].Ack == discon_msg[2].Seq))
-            {
-                continue;
-            }
+            if (discon_msg[3].Seq < Seq + 1) continue;
+            else if (!(discon_msg[3].Is_ACK() && discon_msg[3].CheckValid() && discon_msg[3].Seq == Seq + 1 && discon_msg[3].Ack == discon_msg[2].Seq)) continue;
             Seq = discon_msg[3].Seq;
             cout << "[Server] " << "Fourth-Way Wavehand is successful!" << endl;
             break;
@@ -704,10 +647,7 @@ void Disconnect() // * Router端主动断开连接
         {
             int re = Send(discon_msg[2]);
             dismsg3_Send_Time = clock();
-            if (re > 0)
-            {
-                cout << "[Server] " << "Time Out! -- Send Message to Router! -- Third-Way Wavehand" << endl;
-            }
+            if (re) cout << "[Server] " << "Time Out! -- Send Message to Router! -- Third-Way Wavehand" << endl;
         }
     }
     Exit();
@@ -799,6 +739,8 @@ void Exit()
 <img src="./pic/%E5%9B%BE%E7%89%873.png" style="zoom: 67%;" />
 
 可以直观看到，实时吞吐率逐渐提升并稳定在 26000 $Byte/ms$，而实时往返时延稳定在 1000 $\mu s$，偶尔会有波动。
+
+> 以上数据仅对本次实验负责。
 
 
 
