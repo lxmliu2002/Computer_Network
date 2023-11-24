@@ -14,7 +14,8 @@ int Msg_Num = 0;
 atomic_bool Re_Send(false);
 atomic_bool Finish(false);
 mutex mtx;
-// atomic_int Sleep_Time(0);
+atomic_int *Send_Time;
+atomic_bool *Re_Send_Single;
 
 int Send(Message &msg);
 void Client_Initial();
@@ -213,6 +214,13 @@ void Receive_Ack(bool *Rec_Ack)
                 }
             }
         }
+        for (int i = 0; i < Next_Seq - Base_Seq; i++)
+        {
+            if (clock() - Send_Time[Base_Seq + i - 1] > Wait_Time)
+            {
+                Re_Send_Single[Base_Seq + i - 1] = true;
+            }
+        }
     }
     return;
 }
@@ -251,11 +259,33 @@ void Send_Message(string file_path)
     }
     bool *Rec_Ack = new bool[Msg_Num + 1];
     memset(Rec_Ack, 0, Msg_Num + 1);
+    Send_Time = new atomic_int[Msg_Num + 1];
+    memset(Send_Time, 0, Msg_Num + 1);
+    Re_Send_Single = new atomic_bool[Msg_Num + 1];
+    memset(Re_Send_Single, 0, Msg_Num + 1);
     thread Receive_Ack_Thread(Receive_Ack, Rec_Ack);
     Message *data_msg = new Message[Msg_Num + 1];
     float complete_time = clock();
     while (!Finish)
     {
+        for (int i = 0; (i < Next_Seq - Base_Seq) && Re_Send_Single[Base_Seq + i - 1]; i++)
+        {
+            lock_guard<mutex> lock(mtx);
+            if (Send(data_msg[Base_Seq + i - 1]))
+            {
+                Send_Time[Base_Seq + i - 1] = clock();
+                SetConsoleTextAttribute(hConsole, 12);
+                cout << "!Re_Send_Single! -- Send Message to Router!" << endl;
+                SetConsoleTextAttribute(hConsole, 7);
+                data_msg[Base_Seq + i - 1].Print_Message();
+            }
+            else
+            {
+                cout << "Error in Sending Message!" << endl;
+                exit(EXIT_FAILURE);
+            }
+            Re_Send_Single[Base_Seq + i - 1] = false;
+        }
         if (Re_Send)
         {
             for (int i = 0; (i < Next_Seq - Base_Seq) && (!Rec_Ack[Base_Seq + i - 1]); i++)
@@ -263,6 +293,7 @@ void Send_Message(string file_path)
                 lock_guard<mutex> lock(mtx);
                 if (Send(data_msg[Base_Seq + i - 1]))
                 {
+                    Send_Time[Base_Seq + i - 1] = clock();
                     SetConsoleTextAttribute(hConsole, 12);
                     cout << "!Re_Send! -- Send Message to Router!" << endl;
                     SetConsoleTextAttribute(hConsole, 7);
@@ -314,6 +345,7 @@ void Send_Message(string file_path)
             }
             if (Send(data_msg[Next_Seq - 1]))
             {
+                Send_Time[Next_Seq - 1] = clock();
                 lock_guard<mutex> lock(mtx);
                 data_msg[Next_Seq - 1].Print_Message();
                 Next_Seq++;

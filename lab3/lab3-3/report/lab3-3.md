@@ -57,7 +57,7 @@ https://github.com/lxmliu2002/Computer_Networking
 
 仿照 TCP 协议设计了连接的建立机制——三次握手，依旧使用停等机制，示意图如下：
 
-<img src="./pic/%E5%9B%BE%E7%89%871.png" style="zoom:50%;" />
+<img src="./pic/%E5%9B%BE%E7%89%871.png" style="zoom: 25%;" />
 
 ### 2. 差错检测
 
@@ -102,6 +102,7 @@ https://github.com/lxmliu2002/Computer_Networking
 
 本次实验的超时重传部分主要有以下几种实现：
 
+* 当发送端超过 Wait_Time 未接收到 ACK[i] 时，需重发对应的数据包 i，故而将 Re_Send_Single[i] 置为 true。
 * 当接收端接收到零数据包且陷入循环时，将发送三次当前期望的 Ack，以此刺激发送端重新发送数据。
 * 当接收端接收到的 Ack 与预期不符时，将发送期望的 Ack 到发送端，当发送端接收到相同的 Ack 超过三次时，将重新发送窗口中所有 Rec_Ack 为 false 的数据。
 * 当接收端超过 Wait_Time 未接收到数据时，也会发送三次当前期望的 Ack，刺激发送端重新发送数据。
@@ -110,17 +111,17 @@ https://github.com/lxmliu2002/Computer_Networking
 
 本次实验仿照 TCP 协议，设计了四次挥手断开连接机制，依旧使用停等机制，示意图如下：
 
-<img src="./pic/%E5%9B%BE%E7%89%872.png" style="zoom: 50%;" />
+<img src="./pic/%E5%9B%BE%E7%89%872.png" style="zoom: 25%;" />
 
 ### 6. 状态机
 
 #### （1）发送端
 
-<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231112233103.png" style="zoom:50%;" />
+<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231112233103.png" style="zoom: 25%;" />
 
 #### （2）接收端
 
-<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231112233109.png" style="zoom:50%;" />
+<img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231112233109.png" style="zoom: 25%;" />
 
 
 
@@ -350,6 +351,8 @@ int Msg_Num = 0;
 atomic_bool Re_Send(false);
 atomic_bool Finish(false);
 mutex mtx;
+atomic_int *Send_Time;
+atomic_bool *Re_Send_Single;
 ```
 
 编写了 `Send_Message` 函数用于数据发送。首先输入文件路径，按照路径寻找文件，获取到文件的名称及大小等信息，并以二进制方式读取文件数据。
@@ -380,6 +383,7 @@ if(file_length > pow(2,32))
 * 如果接收到的 Ack 在窗口内，则接收并将对应的 Rec_Ack 置为 true，并从 Base_Seq 起，向后移动窗口至 Rec_Ack 为 false 的位置。
 * 接着计算 Rec_Ack 中为 true 的数量 Is_Finish，如果其等于 Msg_Num，表示所有发出去的数据包均收到确认的 ACK，则将 Finish 置为 true，表示发送结束。
 * 如果接收到相同的 Ack 的次数超过三次，则将 Re_Send 置为 true，重新发送窗口中所有 Rec_Ack 为 false 的数据。
+* 循环遍历窗口中的数据包，如果其超过 Wait_Time 未收到数据，则将其 Re_Send_Single 置为 true，表示该数据包超时需要重新发送。
 
 ```c++
 void Receive_Ack(bool *Rec_Ack)
@@ -426,6 +430,13 @@ void Receive_Ack(bool *Rec_Ack)
                 }
             }
         }
+        for (int i = 0; i < Next_Seq - Base_Seq; i++)
+        {
+            if (clock() - Send_Time[Base_Seq + i - 1] > Wait_Time)
+            {
+                Re_Send_Single[Base_Seq + i - 1] = true;
+            }
+        }
     }
     return;
 }
@@ -468,6 +479,9 @@ Message *data_msg = new Message[Msg_Num + 1];
 
 接着循环发送数据：
 
+* 首先循环遍历当前窗口中的数据包，如果其 Re_Send_Single 为 true 表示需要重发，则重发该数据包。
+  * 此时借助前面定义的 Message 缓冲区，重发该数据包。
+
 * 如果 Finish 为 true，说明文件发送完毕，则直接终止发送。
 * 如果 Re_Send 为 true，说明出现丢失，需要重新发送。
   * 此时借助前面定义的 Message 缓冲区以及 Rec_Ack 数组，定位并重新发送窗口中的所有 Rec_Ack 为 false 的数据。
@@ -475,6 +489,24 @@ Message *data_msg = new Message[Msg_Num + 1];
 ```c++
 while (!Finish)
 {
+    for (int i = 0; (i < Next_Seq - Base_Seq) && Re_Send_Single[Base_Seq + i - 1]; i++)
+    {
+        lock_guard<mutex> lock(mtx);
+        if (Send(data_msg[Base_Seq + i - 1]))
+        {
+            Send_Time[Base_Seq + i - 1] = clock();
+            SetConsoleTextAttribute(hConsole, 12);
+            cout << "!Re_Send_Single! -- Send Message to Router!" << endl;
+            SetConsoleTextAttribute(hConsole, 7);
+            data_msg[Base_Seq + i - 1].Print_Message();
+        }
+        else
+        {
+            cout << "Error in Sending Message!" << endl;
+            exit(EXIT_FAILURE);
+        }
+        Re_Send_Single[Base_Seq + i - 1] = false;
+    }
     if (Re_Send)
     {
         for (int i = 0; (i < Next_Seq - Base_Seq) && (!Rec_Ack[Base_Seq + i - 1]); i++)
@@ -482,6 +514,7 @@ while (!Finish)
             lock_guard<mutex> lock(mtx);
             if (Send(data_msg[Base_Seq + i - 1]))
             {
+                Send_Time[Base_Seq + i - 1] = clock();
                 SetConsoleTextAttribute(hConsole, 12);
                 cout << "!Re_Send! -- Send Message to Router!" << endl;
                 SetConsoleTextAttribute(hConsole, 7);
@@ -533,6 +566,7 @@ while (!Finish)
         }
         if (Send(data_msg[Next_Seq - 1]))
         {
+            Send_Time[Next_Seq - 1] = clock();
             lock_guard<mutex> lock(mtx);
             data_msg[Next_Seq - 1].Print_Message();
             Next_Seq++;
