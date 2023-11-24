@@ -65,7 +65,7 @@ https://github.com/lxmliu2002/Computer_Networking
 
 ### 3. 滑动窗口与选择确认
 
-按照实验要求，在本次实验中，基于GBN流水线协议，使用固定窗口大小，实现了流量控制机制。
+按照实验要求，在本次实验中，基于 SR 流水线协议，使用固定窗口大小，实现了流量控制机制。
 
 <img src="./pic/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20231112230617.png" style="zoom: 33%;" />
 
@@ -79,15 +79,16 @@ https://github.com/lxmliu2002/Computer_Networking
 * 每当发送端接收到回应的 ACK 的时候，将对应的 Rec_Ack 置为 true，表示已经收到对应的 ACK，同时 Is_Finish 自增。
   * 如果接收到的 Ack 与 Base_Seq 相等，则向后移动窗口至 Rec_Ack 为 false 的位置；
   * 如果连续接收到相同 Ack 的次数达到三次，将激发重传；
-    * 此处仅重传窗口中所有 Rec_Ack 为 false 的数据；
+    * 此处仅重传窗口中所有 Rec_Ack 为 false 的数据。
 
   * 当 Is_Finish 的值与 Msg_Num 相等时，则将 Finish 写为 true，表示文件传输结束。
 
 
 #### 接收端
 
-* 接收端维护了一个 bool 类型的 Rec_Ack 数组，用于记录是否接受到对应的报文；
-* 接收端对接收到的报文进行判定，并记录接收到的时间
+* 接收端维护了一个 bool 类型的 Rec_Ack 数组，用于记录是否接受到对应的报文。
+* 接收端的接收缓冲区大小和窗口大小一致，即接收端最多一次性接收 Windows_Size 个报文
+* 接收端对接收到的报文进行判定，并记录接收到的时间。
   * 如果接收到的数据包校验和检验未通过，将直接丢弃；
   * 如果收到的序号小于期望的序号，则丢弃该报文，继续接收其他报文；
   * 如果接收到的序号等于期望的序号，则将对应的 Rec_Ack  置为true，并向后移动窗口至 Rec_Ack 为 false 的地方；
