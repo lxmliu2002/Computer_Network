@@ -84,7 +84,10 @@ https://github.com/lxmliu2002/Computer_Networking
 
 ### 4. 超时重传
 
-* 本次实验中发送端的超时重传参考了快速重传的思想实现。即，当接收到三个重复 Ack 时，重新发送当前窗口的所有数据报文。
+* 本次实验中发送端的超时重传有两部分组成：
+  * 参考快速重传的思想实现，即当接收到三个重复 Ack 时，重新发送当前窗口的所有数据报文；
+  * 当发送端超过 `Wait_Time` 时间间隔未收到 ACK 报文时，也会进行重传。
+
 * 接收端则设置了接收时间判定，如果距离上次接收到报文的时间间隔超过 `Wait_Time`，则向发送端发送三个相同的 ACK 报文，刺激其重新发送。
 
 ### 5. 断开连接——四次挥手（以发送端主动断开连接为例）
@@ -331,6 +334,7 @@ int Msg_Num = 0;
 atomic_bool Re_Send(false);
 atomic_bool Finish(false);
 mutex mtx;
+atomic_int Send_Time(0);
 ```
 
 编写了 `Send_Message` 函数用于数据发送。首先输入文件路径，按照路径寻找文件，获取到文件的名称及大小等信息，并以二进制方式读取文件数据。
@@ -358,6 +362,7 @@ if(file_length > pow(2,32))
 接着编写了一个函数，用于多线程接收 Ack，并根据接收情况进行一些判定。
 
 * 定义了一个用于记录接收的 Ack 的值的 Err_Ack_Num。
+* 如果超过 `Wait_Time` 时间间隔未收到 ACK 报文，则需要重新发送，Re_Send 置为 true。
 * 如果接收到的 Ack 大于目前窗口的 Base_Seq，则窗口向后移动。
 * 如果接收到的 Ack 与发送的消息总数 Msg_Num 相等，则说明发送完成，Finish 置为 true。
 * 如果接收到重复三个 Ack （此时 Count 的值为 3），则需要重新发送，Re_Send 置为 true。
@@ -369,6 +374,10 @@ void Receive_Ack()
     while (true)
     {
         Message ack_msg;
+        if (clock() - Send_Time > Wait_Time)
+        {
+            Re_Send = true;
+        }
         if (recvfrom(ClientSocket, (char *)&ack_msg, sizeof(ack_msg), 0, (SOCKADDR *)&RouterAddr, &RouterAddrLen))
         {
             if (ack_msg.Is_ACK() && ack_msg.CheckValid())
